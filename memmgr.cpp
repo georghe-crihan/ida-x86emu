@@ -22,7 +22,7 @@
 
 #include <ida.hpp>
 #include <idp.hpp>
-#include <srarea.hpp>
+#include <segregs.hpp>
 #include <segment.hpp>
 
 #include "memmgr.h"
@@ -59,13 +59,13 @@ void createNewSegment(const char *name, unsigned int base, unsigned int size) {
       haveTEB = true;
       tebSel = s.sel = allocate_selector(base >> 4);
 #if IDA_SDK_VERSION >= 650
-      set_default_segreg_value(NULL, R_fs, s.sel);
+      set_default_sreg_value(NULL, R_fs, s.sel);
 #else
       SetDefaultRegisterValue(NULL, R_fs, s.sel);
 #endif
    }
-   s.startEA = base;
-   s.endEA = base + size;
+   s.start_ea = base;
+   s.end_ea = base + size;
    s.align = saRelPara;
    s.comb = scPub;
    s.perm = SEGPERM_WRITE | SEGPERM_READ | SEGPERM_EXEC;
@@ -77,15 +77,15 @@ void createNewSegment(const char *name, unsigned int base, unsigned int size) {
    if (add_segm_ex(&s, name, "CODE", ADDSEG_QUIET | ADDSEG_NOSREG)) {
       //zero out the newly created segment
       ea_t ea;
-      for (ea = s.startEA; ea < (s.endEA - 4); ea += 4) {
-         patch_long(ea, 0);
+      for (ea = s.start_ea; ea < (s.end_ea - 4); ea += 4) {
+         patch_dword(ea, 0);
       }
-      while (ea < s.endEA) {
-         patch_long(ea++, 0);
+      while (ea < s.end_ea) {
+         patch_dword(ea++, 0);
       }
       if (haveTEB) {
 #if IDA_SDK_VERSION >= 650
-         set_default_segreg_value(&s, R_fs, tebSel);
+         set_default_sreg_value(&s, R_fs, tebSel);
 #else
          SetDefaultRegisterValue(&s, R_fs, tebSel);
 #endif
@@ -128,21 +128,21 @@ void MemMgr::reserve(unsigned int addr, unsigned int size) {
    if (s) {
       size = (size + 0xFFF) & 0xFFFFF000;
       unsigned int end = addr + size;
-      if (end > s->endEA) {
+      if (end > s->end_ea) {
          segment_t *n = next_seg(addr);
          if (n) {
-            if (n->startEA <= end) {
+            if (n->start_ea <= end) {
                //no room so fail
                return;
             }
          }
          else {
-            if (end < s->startEA) {
+            if (end < s->start_ea) {
                //end wrapped around so fail
                return;
             }
          }
-         netnode segnode(s->startEA);
+         netnode segnode(s->start_ea);
          segnode.altset(SEG_RESERVE, end, 'Z');
       }
    }
@@ -156,37 +156,37 @@ unsigned int MemMgr::mapFixed(unsigned int addr, unsigned int size, unsigned int
    segment_t *s = getseg(addr);
    segment_t *n = next_seg(addr);
 
-   while (n && end >= n->endEA) {
+   while (n && end >= n->end_ea) {
       //range completely consumes next segment
-      del_segm(n->startEA, SEGDEL_KEEP | SEGDEL_SILENT);
+      del_segm(n->start_ea, SEGDEL_KEEP | SEGDEL_SILENT);
       n = next_seg(addr);
    }
-   if (n && end > n->startEA) {
+   if (n && end > n->start_ea) {
       //range partly overlaps next segment
-      set_segm_start(n->startEA, end, SEGMOD_SILENT);
+      set_segm_start(n->start_ea, end, SEGMOD_SILENT);
    }
 
    if (s) {
-      if (s->startEA < addr) {
+      if (s->start_ea < addr) {
          //may need to split segment
-         //addr == s->startEA
-         if (end >= s->endEA) {
+         //addr == s->start_ea
+         if (end >= s->end_ea) {
             //new extends beyond end of s
-            set_segm_end(s->startEA, addr, SEGMOD_SILENT);
+            set_segm_end(s->start_ea, addr, SEGMOD_SILENT);
          }
          else {
             //old completely overlaps new
          }
       }
       else {
-         //addr == s->startEA
-         if (end >= s->endEA) {
+         //addr == s->start_ea
+         if (end >= s->end_ea) {
             //new completely overlaps s
-            del_segm(s->startEA, SEGDEL_KEEP | SEGDEL_SILENT);
+            del_segm(s->start_ea, SEGDEL_KEEP | SEGDEL_SILENT);
          }
          else {
-            //need to move startEA
-            set_segm_start(s->startEA, end, SEGMOD_SILENT);
+            //need to move start_ea
+            set_segm_start(s->start_ea, end, SEGMOD_SILENT);
          }
       }
    }
@@ -217,7 +217,7 @@ unsigned int MemMgr::mmap(unsigned int addr, unsigned int size, unsigned int pro
          segment_t *n = next_seg(addr);
          unsigned int avail = 0;
          if (n) {
-            avail = (unsigned int)n->startEA - addr;
+            avail = (unsigned int)n->start_ea - addr;
          }
          else {
             avail = 0 - addr;
@@ -239,7 +239,7 @@ unsigned int MemMgr::mmap(unsigned int addr, unsigned int size, unsigned int pro
          }
          s = n;
       }
-      addr = (s->endEA + 0xFFF) & 0xFFFFF000;
+      addr = (s->end_ea + 0xFFF) & 0xFFFFF000;
    }
 }
 
@@ -248,7 +248,7 @@ unsigned int MemMgr::munmap(unsigned int addr, unsigned int size) {
    size = (size + 0xFFF) & 0xFFFFF000;
    unsigned int end = addr + size;
    if (s) {
-      if (end >= s->endEA) {
+      if (end >= s->end_ea) {
          del_segm(addr, SEGDEL_KEEP);
       }
       else {

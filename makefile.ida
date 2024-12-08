@@ -1,0 +1,37 @@
+PROC=x86emu
+O1=break
+O2=buffer
+O3=context
+O4=cpu
+O5=emu_script
+O6=x86emu_ui_qt
+O7=emuheap
+O8=emuthreads
+O9=hooklist
+O10=memmgr
+O11=emufuncs
+O12=peutils
+O13=seh
+O14=moc_x86emu_ui_qt
+include ../plugin.mak
+#CFLAGS+=-fdeclspec
+ADDITIONAL_LIBS=-F/Users/Shared/Qt/5.6.0-x64/lib -framework QtWidgets -framework QtGui -framework QtCore -framework OpenGL -framework AGL
+
+# MAKEDEP dependency list ------------------
+$(F)break$(O): $(I)bytes.hpp $(I)fpro.h $(I)funcs.hpp                   \
+	        $(I)help.h $(I)ida.hpp $(I)idp.hpp $(I)kernwin.hpp          \
+	        $(I)lines.hpp $(I)llong.hpp $(I)loader.hpp $(I)nalt.hpp     \
+	        $(I)netnode.hpp $(I)pro.h $(I)segment.hpp $(I)ua.hpp        \
+	        $(I)xref.hpp              \
+	        
+$(F)buffer$(O): $(I)bytes.hpp $(I)fpro.h $(I)funcs.hpp                   \
+	        $(I)help.h $(I)ida.hpp $(I)idp.hpp $(I)kernwin.hpp          \
+	        $(I)lines.hpp $(I)llong.hpp $(I)loader.hpp $(I)nalt.hpp     \
+	        $(I)netnode.hpp $(I)pro.h $(I)segment.hpp $(I)ua.hpp        \
+	        $(I)xref.hpp              \
+	        
+$(F)context$(O): $(I)bytes.hpp $(I)fpro.h $(I)funcs.hpp                   \
+	        $(I)help.h $(I)ida.hpp $(I)idp.hpp $(I)kernwin.hpp          \
+	        $(I)lines.hpp $(I)llong.hpp $(I)loader.hpp $(I)nalt.hpp     \
+	        $(I)netnode.hpp $(I)pro.h $(I)segment.hpp $(I)ua.hpp        \
+	        $(I)xref.hpp              \

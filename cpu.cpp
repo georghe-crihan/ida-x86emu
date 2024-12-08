@@ -648,9 +648,9 @@ bool checkStackRange(unsigned int addr) {
          return false;
       }
       unsigned int pageBase = addr & ~0xFFF; //truncate to 4k boundary
-      unsigned int minStack = (unsigned int)stack->endEA - maxStackSize;
-      if (pageBase < stack->endEA && pageBase >= minStack) {
-         set_segm_start(stack->startEA, pageBase, 0);
+      unsigned int minStack = (unsigned int)stack->end_ea - maxStackSize;
+      if (pageBase < stack->end_ea && pageBase >= minStack) {
+         set_segm_start(stack->start_ea, pageBase, 0);
       }
       s = getseg(addr);
    }

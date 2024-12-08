@@ -73,7 +73,7 @@ unsigned int getNewStackLocation() {
    int count = 1;
    char buf[16];
    segment_t *s = get_segm_by_name(".stack");
-   unsigned int top = (unsigned int)s->endEA + 0xFFFF;
+   unsigned int top = (unsigned int)s->end_ea + 0xFFFF;
    while (getseg(top)) {
       top += 0x10000;
       count++;
@@ -111,8 +111,8 @@ ThreadNode::ThreadNode(unsigned int threadFunc, unsigned int threadArg) {
    //the rest should really only be done for Windows binaries
    if (usingSEH()) {
       char buf[32];
-      unsigned int teb = get_long(fsBase + TEB_LINEAR_ADDR);
-      unsigned int peb = get_long(teb + TEB_PEB_PTR);
+      unsigned int teb = get_dword(fsBase + TEB_LINEAR_ADDR);
+      unsigned int peb = get_dword(teb + TEB_PEB_PTR);
       unsigned int newTeb = 0x7ffdf000;
       unsigned int prev;
       do {
@@ -133,7 +133,7 @@ ThreadNode::ThreadNode(unsigned int threadFunc, unsigned int threadArg) {
       if (getseg(newTeb)) {
          //clear previously used page
          for (int i = 0; i < 0x1000; i += 4) {
-            patch_long(newTeb + i, 0);
+            patch_dword(newTeb + i, 0);
          }
       }
       else {

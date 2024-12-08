@@ -36,7 +36,7 @@
 #undef PACKED
 #endif
 
-#include "x86emu_ui.h"
+#include "x86emu_ui_qt.h"
 #include "cpu.h"
 #include "context.h"
 #include "emufuncs.h"
@@ -54,6 +54,7 @@
 #include <name.hpp>
 #include <typeinf.hpp>
 #include <segment.hpp>
+#include <typeinf.hpp>
 
 #if IDA_SDK_VERSION < 530
 #define SEGMOD_SILENT 0
@@ -65,7 +66,7 @@ void removeVectoredExceptionHandler(unsigned int handler);
 
 #define FAKE_HANDLE_BASE 0x80000000
 
-extern HWND x86Dlg;
+extern X86Dialog x86Dlg;
 
 struct FakedImport {
    unsigned int handle;  //module handle the lookup was performed on
@@ -332,8 +333,8 @@ unsigned int getModuleEnd(unsigned int handle) {
       if (hl->handle == handle) break;
    }
    if (hl) {
-      unsigned int nt = handle + get_long(handle + 0x3C); //e_lfanew
-      return handle + get_long(nt + 0x50); //nt.OptionalHeader.SizeOfImage
+      unsigned int nt = handle + get_dword(handle + 0x3C); //e_lfanew
+      return handle + get_dword(nt + 0x50); //nt.OptionalHeader.SizeOfImage
    }
    return 0xffffffff;
 }
@@ -428,7 +429,7 @@ typedef struct _UNICODE_STRING {
 #define BASE_NAME_OFFSET 44
 
 unsigned int getModuleBase(unsigned int ldrModule) {
-   return get_long(ldrModule + BASE_ADDRESS_OFFSET);
+   return get_dword(ldrModule + BASE_ADDRESS_OFFSET);
 }
 
 void insertTail(unsigned int listHead, unsigned int mod, int doff) {
@@ -437,17 +438,17 @@ void insertTail(unsigned int listHead, unsigned int mod, int doff) {
    unsigned int modFlink = mod + 24 - doff;
    unsigned int blink = listHead;
    unsigned int flink;
-   for (flink = get_long(listHead); 
+   for (flink = get_dword(listHead);
         flink != listHead; 
-        flink = get_long(flink)) {
-      if (get_long(flink + doff) == handle) return; //already in list
+        flink = get_dword(flink)) {
+      if (get_dword(flink + doff) == handle) return; //already in list
       blink = flink;
    }
-   blink = get_long(listHead + 4);
-   patch_long(blink, modFlink);
-   patch_long(modFlink, listHead);  //point mod fwd to head
-   patch_long(modFlink + 4, blink);  //point mod back to former tail
-   patch_long(listHead + 4, modFlink);  //link back to mod
+   blink = get_dword(listHead + 4);
+   patch_dword(blink, modFlink);
+   patch_dword(modFlink, listHead);  //point mod fwd to head
+   patch_dword(modFlink + 4, blink);  //point mod back to former tail
+   patch_dword(listHead + 4, modFlink);  //link back to mod
 }
 
 void insertHead(unsigned int listHead, unsigned int mod, int doff) {
@@ -458,18 +459,18 @@ void insertHead(unsigned int listHead, unsigned int mod, int doff) {
 //   msg("modFlink is %x\n", modFlink);
    unsigned int flink;
 //   msg("listHead is %x\n", listHead);
-   for (flink = get_long(listHead); 
+   for (flink = get_dword(listHead);
         flink != listHead; 
-        flink = get_long(flink)) {
+        flink = get_dword(flink)) {
 //      msg("first check flink = %x\n", flink);
-      if (get_long(flink + doff) == handle) return; //already in list
+      if (get_dword(flink + doff) == handle) return; //already in list
    }
-   flink = get_long(listHead);
-   /*unsigned int back =*/ get_long(flink + 4);
-   patch_long(flink + 4, modFlink);
-   patch_long(modFlink + 4, listHead);  //point mod back to head
-   patch_long(modFlink, flink);  //point mod fwd to former head
-   patch_long(listHead, modFlink);  //link fwd to mod
+   flink = get_dword(listHead);
+   /*unsigned int back =*/ get_dword(flink + 4);
+   patch_dword(flink + 4, modFlink);
+   patch_dword(modFlink + 4, listHead);  //point mod back to head
+   patch_dword(modFlink, flink);  //point mod fwd to former head
+   patch_dword(listHead, modFlink);  //link fwd to mod
 }
 
 void insertInOrder(unsigned int listHead, unsigned int mod, int doff) {
@@ -478,33 +479,33 @@ void insertInOrder(unsigned int listHead, unsigned int mod, int doff) {
    unsigned int modFlink = mod + 24 - doff;
    unsigned int blink = listHead;
    unsigned int flink;
-   for (flink = get_long(listHead); 
+   for (flink = get_dword(listHead);
         flink != listHead; 
-        flink = get_long(flink)) {
-      unsigned int modBase = get_long(flink + doff);
+        flink = get_dword(flink)) {
+      unsigned int modBase = get_dword(flink + doff);
       if (modBase == handle) return; //already in list
       if (modBase > handle) break; //insert before this
       blink = flink;
    }
    //insert prior to flink
-   blink = get_long(flink + 4);
-   patch_long(blink, modFlink);
-   patch_long(modFlink, flink);  //point mod back to head
-   patch_long(modFlink + 4, blink);  //point mod fwd to former head
-   patch_long(flink + 4, modFlink);  //link fwd to mod
+   blink = get_dword(flink + 4);
+   patch_dword(blink, modFlink);
+   patch_dword(modFlink, flink);  //point mod back to head
+   patch_dword(modFlink + 4, blink);  //point mod fwd to former head
+   patch_dword(flink + 4, modFlink);  //link fwd to mod
 }
 
 bool containsModule(unsigned int listHead, unsigned int mod, int doff) {
-   for (unsigned int flink = get_long(listHead); 
+   for (unsigned int flink = get_dword(listHead);
         flink != listHead; 
-        flink = get_long(flink)) {
-      if (get_long(flink + doff) == mod) return true; //already in list
+        flink = get_dword(flink)) {
+      if (get_dword(flink + doff) == mod) return true; //already in list
    }
    return false;
 }
 
 bool cmp_c_to_dbuni(char *cstr, unsigned int uni) {
-   unsigned int ustr = get_long(uni + 4);
+   unsigned int ustr = get_dword(uni + 4);
    if (ustr) {
       do {
          char ch = *cstr++;
@@ -524,7 +525,7 @@ unsigned int allocateUnicodeString(const char *str) {
 
    patch_word(uni, len * 2);
    patch_word(uni + 2, len * 2 + 2);
-   patch_long(uni + 4, ustr);
+   patch_dword(uni + 4, ustr);
    for (int i = 0; i <= len; i++) {
       patch_word(ustr, *str++);
       ustr += 2;
@@ -535,16 +536,16 @@ unsigned int allocateUnicodeString(const char *str) {
 unsigned int findPebModuleByName(char *name) {
    segment_t *s = get_segm_by_name(".peb");
    if (s) { 
-      unsigned int peb = (unsigned int)s->startEA;
-      unsigned int pebLdr = get_long(peb + 0xC);
+      unsigned int peb = (unsigned int)s->start_ea;
+      unsigned int pebLdr = get_dword(peb + 0xC);
       unsigned int list = pebLdr + 0xC;
       unsigned int blink = list;
       unsigned int flink;
-      for (flink = get_long(list); 
+      for (flink = get_dword(list);
            flink != list; 
-           flink = get_long(flink)) {
+           flink = get_dword(flink)) {
          if (cmp_c_to_dbuni(name, flink + BASE_NAME_OFFSET) == 0) {
-            return get_long(flink + BASE_ADDRESS_OFFSET);
+            return get_dword(flink + BASE_ADDRESS_OFFSET);
          }
          blink = flink;
       }
@@ -556,27 +557,27 @@ void addModuleToPeb(unsigned int handle, const char *name, bool loading) {
    segment_t *s = get_segm_by_name(".peb");
    if (s) {
       msg("adding %s (%x) to PEB\n", name, handle);
-      unsigned int peb = (unsigned int)s->startEA;
-      unsigned int pebLdr = get_long(peb + 0xC);
+      unsigned int peb = (unsigned int)s->start_ea;
+      unsigned int pebLdr = get_dword(peb + 0xC);
 
       unsigned int uni = allocateUnicodeString(name);
       msg("mod name allocated at %x\n", uni);
 
       //mod is the address of the LDR_MODULE that we are allocating
       unsigned int mod = HeapBase::getHeap()->malloc(LDR_MODULE_SIZE);
-      unsigned int pe = handle + get_long(handle + 0x3C);
+      unsigned int pe = handle + get_dword(handle + 0x3C);
       msg("mod allocated at %x\n", mod);
-      patch_long(mod + BASE_ADDRESS_OFFSET, handle);  //BaseAddress
-      patch_long(mod + BASE_ADDRESS_OFFSET + 4, handle + get_long(pe + 0x28)); //EntryPoint
-      patch_long(mod + BASE_ADDRESS_OFFSET + 8, get_long(pe + 0x50)); //SizeOfImage
-//      patch_long(mod + 36, 0);  //FullDllName
-      patch_long(mod + 44, get_long(uni));  //BaseDllName
-      patch_long(mod + 48, get_long(uni + 4));  //BaseDllName
-//      patch_long(mod + 52, 0);  //Flags
-      patch_long(mod + 56, 1);  //LoadCount
-//      patch_long(mod + 58, 0);  //TlsIndex
-//      patch_long(mod + 60, 0);  //HashTableEntry
-//      patch_long(mod + 68, 0);  //TimeDateStamp
+      patch_dword(mod + BASE_ADDRESS_OFFSET, handle);  //BaseAddress
+      patch_dword(mod + BASE_ADDRESS_OFFSET + 4, handle + get_dword(pe + 0x28)); //EntryPoint
+      patch_dword(mod + BASE_ADDRESS_OFFSET + 8, get_dword(pe + 0x50)); //SizeOfImage
+//      patch_dword(mod + 36, 0);  //FullDllName
+      patch_dword(mod + 44, get_dword(uni));  //BaseDllName
+      patch_dword(mod + 48, get_dword(uni + 4));  //BaseDllName
+//      patch_dword(mod + 52, 0);  //Flags
+      patch_dword(mod + 56, 1);  //LoadCount
+//      patch_dword(mod + 58, 0);  //TlsIndex
+//      patch_dword(mod + 60, 0);  //HashTableEntry
+//      patch_dword(mod + 68, 0);  //TimeDateStamp
       
       unsigned int loadOrder = pebLdr + 0xC;
       msg("addModuleToPeb containsModule\n");
@@ -605,8 +606,8 @@ void addModuleToPeb(HandleNode *hn, bool loading, unsigned int uni) {
    segment_t *s = get_segm_by_name(".peb");
    if (s) {
       msg("adding %s (%x) to PEB\n", hn->moduleName, hn->handle);
-      unsigned int peb = (unsigned int)s->startEA;
-      unsigned int pebLdr = get_long(peb + 0xC);
+      unsigned int peb = (unsigned int)s->start_ea;
+      unsigned int pebLdr = get_dword(peb + 0xC);
 
       if (uni == 0) {
          uni = allocateUnicodeString(hn->moduleName);
@@ -616,19 +617,19 @@ void addModuleToPeb(HandleNode *hn, bool loading, unsigned int uni) {
       //mod is the address of the LDR_MODULE that we are allocating
       unsigned int mod = HeapBase::getHeap()->malloc(LDR_MODULE_SIZE);
 
-      unsigned int pe = hn->handle + get_long(hn->handle + 0x3C);
+      unsigned int pe = hn->handle + get_dword(hn->handle + 0x3C);
       msg("mod allocated at %x\n", mod);
-      patch_long(mod + BASE_ADDRESS_OFFSET, hn->handle);  //BaseAddress
-      patch_long(mod + BASE_ADDRESS_OFFSET + 4, hn->handle + get_long(pe + 0x28)); //EntryPoint
-      patch_long(mod + BASE_ADDRESS_OFFSET + 8, get_long(pe + 0x50)); //SizeOfImage
-//      patch_long(mod + 36, 0);  //FullDllName
-      patch_long(mod + 44, get_long(uni));  //BaseDllName
-      patch_long(mod + 48, get_long(uni + 4));  //BaseDllName
-//      patch_long(mod + 52, 0);  //Flags
-      patch_long(mod + 56, 1);  //LoadCount
-//      patch_long(mod + 58, 0);  //TlsIndex
-//      patch_long(mod + 60, 0);  //HashTableEntry
-//      patch_long(mod + 68, 0);  //TimeDateStamp
+      patch_dword(mod + BASE_ADDRESS_OFFSET, hn->handle);  //BaseAddress
+      patch_dword(mod + BASE_ADDRESS_OFFSET + 4, hn->handle + get_dword(pe + 0x28)); //EntryPoint
+      patch_dword(mod + BASE_ADDRESS_OFFSET + 8, get_dword(pe + 0x50)); //SizeOfImage
+//      patch_dword(mod + 36, 0);  //FullDllName
+      patch_dword(mod + 44, get_dword(uni));  //BaseDllName
+      patch_dword(mod + 48, get_dword(uni + 4));  //BaseDllName
+//      patch_dword(mod + 52, 0);  //Flags
+      patch_dword(mod + 56, 1);  //LoadCount
+//      patch_dword(mod + 58, 0);  //TlsIndex
+//      patch_dword(mod + 60, 0);  //HashTableEntry
+//      patch_dword(mod + 68, 0);  //TimeDateStamp
       
       unsigned int loadOrder = pebLdr + 0xC;
       msg("addModuleToPeb containsModule\n");
@@ -743,19 +744,19 @@ HandleNode *addNewModuleNode(const char *mod, unsigned int h, unsigned int id) {
       m->id = id ? id : moduleId;
       moduleId += 0x10000;
 
-      unsigned int pe_addr = m->handle + get_long(0x3C + m->handle);  //dos.e_lfanew
-      m->maxAddr = m->handle + get_long(pe_addr + 0x18 + 0x38); //nt.OptionalHeader.SizeOfImage
+      unsigned int pe_addr = m->handle + get_dword(0x3C + m->handle);  //dos.e_lfanew
+      m->maxAddr = m->handle + get_dword(pe_addr + 0x18 + 0x38); //nt.OptionalHeader.SizeOfImage
 
-      unsigned int export_dir = m->handle + get_long(pe_addr + 0x18 + 0x60 + 0x0);  //export dir RVA
+      unsigned int export_dir = m->handle + get_dword(pe_addr + 0x18 + 0x60 + 0x0);  //export dir RVA
  
-      m->ordinal_base = get_long(export_dir + 0x10);   //ed.Base
+      m->ordinal_base = get_dword(export_dir + 0x10);   //ed.Base
 
-      m->NoF = get_long(export_dir + 0x14);  //ed.NumberOfFunctions
-      m->NoN = get_long(export_dir + 0x18);  //ed.NumberOfNames
+      m->NoF = get_dword(export_dir + 0x14);  //ed.NumberOfFunctions
+      m->NoN = get_dword(export_dir + 0x18);  //ed.NumberOfNames
 
-      m->eat = m->handle + get_long(export_dir + 0x1C);  //ed.AddressOfFunctions;
-      m->ent = m->handle + get_long(export_dir + 0x20);  //ed.AddressOfNames;
-      m->eot = m->handle + get_long(export_dir + 0x24);  //ed.AddressOfNameOrdinals;
+      m->eat = m->handle + get_dword(export_dir + 0x1C);  //ed.AddressOfFunctions;
+      m->ent = m->handle + get_dword(export_dir + 0x20);  //ed.AddressOfNames;
+      m->eot = m->handle + get_dword(export_dir + 0x24);  //ed.AddressOfNameOrdinals;
    }
    return m;
 }
@@ -785,7 +786,7 @@ HandleNode *addModule(const char *mod, bool loading, int id, bool addToPeb) {
          }
          if (f == NULL) {
             int load = R_YES;
-            load = askbuttons_c("Yes", "No", "Fake it", 1, "Could not locate %s. Locate it now?", mod);
+            load = ask_buttons("Yes", "No", "Fake it", 1, "Could not locate %s. Locate it now?", mod);
             if (load == R_YES) {
                char title[128];
                char lastDir[260];
@@ -1036,18 +1037,18 @@ void emu_GetCommandLineA(unsigned int /*addr*/) {
 //*** this needs more work
 //common core for GetStartupInfoX
 void emu_GetStartupInfo(unsigned int lpStartupInfo, unsigned int pp) {
-   patch_long(lpStartupInfo, 0x44);   //cb = sizeof(STARTUPINFO)
+   patch_dword(lpStartupInfo, 0x44);   //cb = sizeof(STARTUPINFO)
 
-   patch_long(lpStartupInfo + 4, 0);   //lpReserved
+   patch_dword(lpStartupInfo + 4, 0);   //lpReserved
 
-   patch_long(lpStartupInfo + 0x20, 0);   //dwFillAttribute
+   patch_dword(lpStartupInfo + 0x20, 0);   //dwFillAttribute
    patch_word(lpStartupInfo + 0x30, 1);   //wShowWindow == SW_SHOWNORMAL
    patch_word(lpStartupInfo + 0x32, 0);   //cbReserved2
-   patch_long(lpStartupInfo + 0x34, 0);   //lpReserved2
+   patch_dword(lpStartupInfo + 0x34, 0);   //lpReserved2
 
-   patch_long(lpStartupInfo + 0x38, get_long(pp + 0x18));   //hStdInput
-   patch_long(lpStartupInfo + 0x3C, get_long(pp + 0x1C));   //hStdOutput
-   patch_long(lpStartupInfo + 0x40, get_long(pp + 0x20));   //hStdError
+   patch_dword(lpStartupInfo + 0x38, get_dword(pp + 0x18));   //hStdInput
+   patch_dword(lpStartupInfo + 0x3C, get_dword(pp + 0x1C));   //hStdOutput
+   patch_dword(lpStartupInfo + 0x40, get_dword(pp + 0x20));   //hStdError
 }
 
 void emu_GetStartupInfoA(unsigned int /*addr*/) {
@@ -1056,8 +1057,8 @@ void emu_GetStartupInfoA(unsigned int /*addr*/) {
    unsigned int peb = readDword(fsBase + TEB_PEB_PTR);
    unsigned int pp = readDword(peb + PEB_PROCESS_PARMS);
 
-   patch_long(lpStartupInfo + 8, get_long(pp + SIZEOF_PROCESS_PARAMETERS + 4));   //DesktopInfo
-   patch_long(lpStartupInfo + 12, get_long(pp + SIZEOF_PROCESS_PARAMETERS));   //WindowTitle
+   patch_dword(lpStartupInfo + 8, get_dword(pp + SIZEOF_PROCESS_PARAMETERS + 4));   //DesktopInfo
+   patch_dword(lpStartupInfo + 12, get_dword(pp + SIZEOF_PROCESS_PARAMETERS));   //WindowTitle
 
    emu_GetStartupInfo(lpStartupInfo, pp);
    if (doLogLib) {
@@ -1070,8 +1071,8 @@ void emu_GetStartupInfoW(unsigned int /*addr*/) {
    unsigned int peb = readDword(fsBase + TEB_PEB_PTR);
    unsigned int pp = readDword(peb + PEB_PROCESS_PARMS);
 
-   patch_long(lpStartupInfo + 8, get_long(pp + 0x7C));   //DesktopInfo
-   patch_long(lpStartupInfo + 12, get_long(pp + 0x74));   //WindowTitle
+   patch_dword(lpStartupInfo + 8, get_dword(pp + 0x7C));   //DesktopInfo
+   patch_dword(lpStartupInfo + 12, get_dword(pp + 0x74));   //WindowTitle
    emu_GetStartupInfo(lpStartupInfo, pp);
    if (doLogLib) {
       msg("call: GetStartupInfoW(0x%x)\n", lpStartupInfo);
@@ -1108,7 +1109,7 @@ void emu_GetLocaleInfoA(unsigned int /*addr*/) {
                setThreadError(122);   //ERROR_INSUFFICIENT_BUFFER
             }
             else {
-               put_many_bytes(lpLCData, "1252", 5);
+               put_bytes(lpLCData, "1252", 5);
             }
             break;
          case 0x1001:  //LOCALE_SENGLANGUAGE
@@ -1121,7 +1122,7 @@ void emu_GetLocaleInfoA(unsigned int /*addr*/) {
                setThreadError(122);   //ERROR_INSUFFICIENT_BUFFER
             }
             else {
-               put_many_bytes(lpLCData, "English", 8);
+               put_bytes(lpLCData, "English", 8);
             }
             break;
          case 0x1002:  //LOCALE_SENGCOUNTRY
@@ -1134,7 +1135,7 @@ void emu_GetLocaleInfoA(unsigned int /*addr*/) {
                setThreadError(122);   //ERROR_INSUFFICIENT_BUFFER
             }
             else {
-               put_many_bytes(lpLCData, "United States", 14);
+               put_bytes(lpLCData, "United States", 14);
             }
             break;
          default:
@@ -1180,7 +1181,7 @@ void emu_GetLocaleInfoW(unsigned int /*addr*/) {
                setThreadError(122);   //ERROR_INSUFFICIENT_BUFFER
             }
             else {
-               put_many_bytes(lpLCData, "\x31\x00\x32\x00\x35\x00\x32\x00\x00\x00", 10);
+               put_bytes(lpLCData, "\x31\x00\x32\x00\x35\x00\x32\x00\x00\x00", 10);
             }
             break;
          case 0x1001:  //LOCALE_SENGLANGUAGE
@@ -1193,7 +1194,7 @@ void emu_GetLocaleInfoW(unsigned int /*addr*/) {
                setThreadError(122);   //ERROR_INSUFFICIENT_BUFFER
             }
             else {
-               put_many_bytes(lpLCData, "\x45\x00\x6e\x00\x67\x00\x6c\x00\x69\x00\x73\x00\x68\x00\x00\x00", 16);
+               put_bytes(lpLCData, "\x45\x00\x6e\x00\x67\x00\x6c\x00\x69\x00\x73\x00\x68\x00\x00\x00", 16);
             }
             break;
          case 0x1002:  //LOCALE_SENGCOUNTRY
@@ -1206,7 +1207,7 @@ void emu_GetLocaleInfoW(unsigned int /*addr*/) {
                setThreadError(122);   //ERROR_INSUFFICIENT_BUFFER
             }
             else {
-               put_many_bytes(lpLCData, "\x55\x00\x6e\x00\x69\x00\x74\x00\x65\x00\x64\x00\x20\x00\x53\x00\x74\x00\x61\x00\x74\x00\x65\x00\x73\x00\x00\x00", 28);
+               put_bytes(lpLCData, "\x55\x00\x6e\x00\x69\x00\x74\x00\x65\x00\x64\x00\x20\x00\x53\x00\x74\x00\x61\x00\x74\x00\x65\x00\x73\x00\x00\x00", 28);
             }
             break;
          default:
@@ -1739,12 +1740,12 @@ void emu_GetCPInfo(unsigned int /*addr*/) {
       case 1:
       case 437:  //(US)
       case 0x4e4:  //1252 == Latin I
-         patch_long(lpCPInfo, 1);
+         patch_dword(lpCPInfo, 1);
          patch_word(lpCPInfo + 4, '?');
          patch_word(lpCPInfo + 6, 0);
-         patch_long(lpCPInfo + 8, 0);
-         patch_long(lpCPInfo + 12, 0);
-         patch_long(lpCPInfo + 16, 0);
+         patch_dword(lpCPInfo + 8, 0);
+         patch_dword(lpCPInfo + 12, 0);
+         patch_dword(lpCPInfo + 16, 0);
          break;
       default:
          eax = 0;
@@ -1847,13 +1848,13 @@ void emu_GetStdHandle(unsigned int /*addr*/) {
    unsigned int pp = readDword(peb + PEB_PROCESS_PARMS);
    switch (handle) {
       case 0xfffffff6:   //STD_INPUT_HANDLE
-         eax = get_long(pp + 0x18);
+         eax = get_dword(pp + 0x18);
          break;
       case 0xfffffff5:   //STD_OUTPUT_HANDLE
-         eax = get_long(pp + 0x1C);
+         eax = get_dword(pp + 0x1C);
          break;
       case 0xfffffff4:   //STD_ERROR_HANDLE
-         eax = get_long(pp + 0x20);
+         eax = get_dword(pp + 0x20);
          break;
       default:
          eax = 0xffffffff;
@@ -2283,7 +2284,7 @@ void emu_lstrlen(unsigned int /*addr*/) {
    unsigned int str = pop(SIZE_DWORD);
    unsigned int arg = str;
    unsigned int len = 0;
-   while (isLoaded(str) && get_byte(str)) {
+   while (is_loaded(str) && get_byte(str)) {
       len++;
       str++;
    }
@@ -2295,7 +2296,7 @@ void emu_lstrlen(unsigned int /*addr*/) {
 
 void strcpy_common_wide(unsigned int dest, unsigned int src) {
    unsigned int val;
-   while (isLoaded(src)) {
+   while (is_loaded(src)) {
       val = get_word(src);
       src += 2;
       patch_word(dest, val);
@@ -2315,7 +2316,7 @@ void emu_lstrcpyW(unsigned int /*addr*/) {
 
 void strcpy_common(unsigned int dest, unsigned int src) {
    unsigned int val;
-   while (isLoaded(src)) {
+   while (is_loaded(src)) {
       val = get_byte(src++);
       patch_byte(dest++, val);
       if (val == 0) break;
@@ -2336,7 +2337,7 @@ void emu_lstrcat(unsigned int /*addr*/) {
    eax = dest;
    unsigned int src = pop(SIZE_DWORD);
    //move to end of dest
-   while (isLoaded(dest) && get_byte(dest)) dest++;
+   while (is_loaded(dest) && get_byte(dest)) dest++;
    strcpy_common(dest, src);
    if (doLogLib) {
       msg("call: lstrcat(0x%x, 0x%x) = 0x%x\n", eax, src, eax);
@@ -2348,7 +2349,7 @@ void emu_strcat(unsigned int /*addr*/) {
    eax = dest;
    unsigned int src = readDword(esp + 4);
    //move to end of dest
-   while (isLoaded(dest) && get_byte(dest)) dest++;
+   while (is_loaded(dest) && get_byte(dest)) dest++;
    strcpy_common(dest, src);
    if (doLogLib) {
       msg("call: strcat(0x%x, 0x%x) = 0x%x\n", eax, src, eax);
@@ -2367,7 +2368,7 @@ void emu_strcpy(unsigned int /*addr*/) {
 void strncpy_common(unsigned int dest, unsigned int src, unsigned int n) {
    unsigned int val;
    unsigned int i = 0;
-   while (isLoaded(src) && i < n) {
+   while (is_loaded(src) && i < n) {
       val = get_byte(src++);
       patch_byte(dest++, val);
       if (val == 0) break;
@@ -2389,7 +2390,7 @@ void emu_wcsset(unsigned int /*addr*/) {
    unsigned int dest = readDword(esp);
    unsigned int val = readDword(esp + 4);
    eax = dest;
-   while (isLoaded(dest) && get_word(dest)) {
+   while (is_loaded(dest) && get_word(dest)) {
       patch_word(dest, val);
       dest += 2;
    }
@@ -2401,7 +2402,7 @@ void emu_wcsset(unsigned int /*addr*/) {
 void emu_strlwr(unsigned int /*addr*/) {
    unsigned int dest = readDword(esp);
    eax = dest;
-   while (isLoaded(dest)) {
+   while (is_loaded(dest)) {
       unsigned int val = get_byte(dest);
       if (val == 0) break;
       patch_byte(dest++, tolower(val));
@@ -2471,7 +2472,7 @@ void emu_StrCmpW(unsigned int /*addr*/) {
    unsigned int str2 = pop(SIZE_DWORD);
    unsigned int arg2 = str2;
    eax = 1;
-   while (isLoaded(str1) && isLoaded(str2)) {
+   while (is_loaded(str1) && is_loaded(str2)) {
       unsigned int val1 = get_word(str1);
       unsigned int val2 = get_word(str2);
       int res = val1 - val2;
@@ -2506,7 +2507,7 @@ void emu_StrCmpIW(unsigned int /*addr*/) {
    unsigned int str2 = pop(SIZE_DWORD);
    unsigned int arg2 = str2;
    eax = 1;
-   while (isLoaded(str1) && isLoaded(str2)) {
+   while (is_loaded(str1) && is_loaded(str2)) {
       unsigned int val1 = towlower(get_word(str1));
       unsigned int val2 = towlower(get_word(str2));
       int res = val1 - val2;
@@ -2532,7 +2533,7 @@ void emu_StrCpyW(unsigned int /*addr*/) {
    unsigned int str2 = pop(SIZE_DWORD);
    eax = str1;
    unsigned int arg2 = str2;
-   while (isLoaded(str2)) {
+   while (is_loaded(str2)) {
       unsigned int val1 = get_word(str2);
       patch_word(str1, val1);
       if (val1 == 0) { //end of string
@@ -2551,7 +2552,7 @@ void emu_StrChrIA(unsigned int /*addr*/) {
    int match = tolower(pop(SIZE_DWORD));
    unsigned int val = get_byte(str1);
    eax = 0;
-   while (isLoaded(str1) && val) {
+   while (is_loaded(str1) && val) {
       if (tolower(val) == match) {
          eax = str1;
          break;
@@ -2578,7 +2579,7 @@ void emu_StrChrIW(unsigned int /*addr*/) {
    int match = towlower(pop(SIZE_DWORD));
    unsigned int val = get_word(str1);
    eax = 0;
-   while (isLoaded(str1) && val != 0) {
+   while (is_loaded(str1) && val != 0) {
       if (towlower(val) == match) {
          eax = str1;
          break;
@@ -2598,7 +2599,7 @@ void emu_StrCmpNW(unsigned int /*addr*/) {
    unsigned int arg2 = str2;
    int n = pop(SIZE_DWORD);
    eax = 0;
-   for (int i = 0; i < n && isLoaded(str1) && isLoaded(str2); i++) {
+   for (int i = 0; i < n && is_loaded(str1) && is_loaded(str2); i++) {
       unsigned int val1 = get_word(str1);
       unsigned int val2 = get_word(str2);
       int res = val1 - val2;
@@ -2624,7 +2625,7 @@ void emu_StrCmpNIW(unsigned int /*addr*/) {
    unsigned int arg2 = str2;
    int n = pop(SIZE_DWORD);
    eax = 0;
-   for (int i = 0; i < n && isLoaded(str1) && isLoaded(str2); i++) {
+   for (int i = 0; i < n && is_loaded(str1) && is_loaded(str2); i++) {
       unsigned int val1 = towlower(get_word(str1));
       unsigned int val2 = towlower(get_word(str2));
       int res = val1 - val2;
@@ -2858,7 +2859,7 @@ void emu_IsUserAnAdmin(unsigned int /*addr*/) {
 
 void emu_GetVersionExA(unsigned int /*addr*/) {
    unsigned int ptr = pop(SIZE_DWORD);
-   unsigned int sz = get_long(ptr);
+   unsigned int sz = get_dword(ptr);
    eax = 1;
    if (sz != 0x94 && sz != 0x9C) {
       eax = 0;
@@ -2868,7 +2869,7 @@ void emu_GetVersionExA(unsigned int /*addr*/) {
       patch_byte(ptr + 8, WINDOWS_XP_MINOR);
       patch_byte(ptr + 12, 0xa28);
       patch_byte(ptr + 16, VER_PLATFORM_WIN32_NT);
-      patch_many_bytes(ptr + 20, "Service Pack 3", 15);
+      patch_bytes(ptr + 20, "Service Pack 3", 15);
       if (sz == 0x114) { //file in EX related stuff beginning at 0x94
       }
    }
@@ -3043,7 +3044,7 @@ void emu_NtQuerySystemInformation(unsigned int /*addr*/) {
                         hl->handle, SIZE_DWORD);
                writeMem(pSystemInformation + 4 + i * sizeof(SYSTEM_MODULE) + 26, 
                         0, SIZE_WORD);
-               patch_many_bytes(pSystemInformation + 4 + i * sizeof(SYSTEM_MODULE) + 28, 
+               patch_bytes(pSystemInformation + 4 + i * sizeof(SYSTEM_MODULE) + 28,
                         hl->moduleName, strlen(hl->moduleName) + 1);
             }
          }
@@ -3133,9 +3134,9 @@ void emu_NtQueryInformationProcess(unsigned int /*addr*/) {
          }
          else if (pProcessInformation) {
             //get peb base address
-            writeMem(pProcessInformation + 4, get_long(fsBase + 0x30), SIZE_DWORD);
+            writeMem(pProcessInformation + 4, get_dword(fsBase + 0x30), SIZE_DWORD);
             //process id
-            writeMem(pProcessInformation + 16, get_long(fsBase + 0x20), SIZE_DWORD);
+            writeMem(pProcessInformation + 16, get_dword(fsBase + 0x20), SIZE_DWORD);
          }
          if (pReturnLength) {
             writeMem(pReturnLength, 24, SIZE_DWORD);
@@ -3174,14 +3175,14 @@ void emu_GetCurrentProcess(unsigned int /*addr*/) {
 }
 
 void emu_GetCurrentProcessId(unsigned int /*addr*/) {
-   eax = get_long(fsBase + TEB_PROCESS_ID);
+   eax = get_dword(fsBase + TEB_PROCESS_ID);
    if (doLogLib) {
       msg("call: GetCurrentProcessId() = 0x%x\n", eax);
    }
 }
 
 void emu_GetCurrentThreadId(unsigned int /*addr*/) {
-   eax = get_long(fsBase + TEB_THREAD_ID);
+   eax = get_dword(fsBase + TEB_THREAD_ID);
    if (doLogLib) {
       msg("call: GetCurrentThreadId() = 0x%x\n", eax);
    }
@@ -3226,19 +3227,19 @@ void emu_CreateThread(unsigned int /*addr*/) {
    
    unsigned int top = tn->regs.general[ESP] + 32;
 
-   patch_long(newTeb + TEB_PROCESS_ID, pid);
-   patch_long(newTeb + TEB_THREAD_ID, tn->id);
+   patch_dword(newTeb + TEB_PROCESS_ID, pid);
+   patch_dword(newTeb + TEB_THREAD_ID, tn->id);
 
-   patch_long(newTeb, newTeb + 0xf80);  //last chance SEH record
-   patch_long(newTeb + 0xf80, 0xffffffff);  //end of SEH list
+   patch_dword(newTeb, newTeb + 0xf80);  //last chance SEH record
+   patch_dword(newTeb + 0xf80, 0xffffffff);  //end of SEH list
    //need kernel32.dll mapped prior to this
-   patch_long(newTeb + 0xf84, lastChance);  //kernel32 exception handler
+   patch_dword(newTeb + 0xf84, lastChance);  //kernel32 exception handler
 
-   patch_long(newTeb + TEB_LINEAR_ADDR, newTeb);  //teb self pointer
-   patch_long(newTeb + TEB_PEB_PTR, peb);     //peb self pointer   
+   patch_dword(newTeb + TEB_LINEAR_ADDR, newTeb);  //teb self pointer
+   patch_dword(newTeb + TEB_PEB_PTR, peb);     //peb self pointer
    
-   patch_long(newTeb + TEB_STACK_TOP, top);     //top of stack   
-   patch_long(newTeb + TEB_STACK_BOTTOM, top - 0x1000);     //bottom of stack   
+   patch_dword(newTeb + TEB_STACK_TOP, top);     //top of stack
+   patch_dword(newTeb + TEB_STACK_BOTTOM, top - 0x1000);     //bottom of stack
    
    if (lpThreadId) {
       writeMem(lpThreadId, tn->id, SIZE_DWORD);
@@ -3373,8 +3374,8 @@ void emu_NtAllocateVirtualMemory(unsigned int /*addr*/) {
    unsigned int pRegionSize = pop(SIZE_DWORD);
    unsigned int flAllocationType = pop(SIZE_DWORD);
    unsigned int flProtect = pop(SIZE_DWORD);
-   unsigned int rbase = get_long(pBaseAddress);
-   unsigned int dwSize = get_long(pRegionSize);
+   unsigned int rbase = get_dword(pBaseAddress);
+   unsigned int dwSize = get_dword(pRegionSize);
    unsigned int base = rbase & 0xFFFFF000;
    if (rbase) {
       unsigned int end = (rbase + dwSize + 0xFFF) & 0xFFFFF000;
@@ -3384,8 +3385,8 @@ void emu_NtAllocateVirtualMemory(unsigned int /*addr*/) {
       dwSize = (dwSize + 0xFFF) & 0xFFFFF000;
    }
    unsigned int maddr = MemMgr::mmap(base, dwSize, 0, 0);
-   patch_long(pRegionSize, dwSize);
-   patch_long(pBaseAddress, maddr);
+   patch_dword(pRegionSize, dwSize);
+   patch_dword(pBaseAddress, maddr);
    eax = 0;   //NTSTATUS
 //   msg("x86emu: NtVirtualAllocateMemory called: %d bytes allocated at 0x%x\n", dwSize, addr);
    if (doLogLib) {
@@ -3520,7 +3521,7 @@ unsigned int myGetProcAddress(unsigned int hModule, unsigned int lpProcName) {
       if (dot) *dot = '_';
       if ((m->handle & FAKE_HANDLE_BASE) == 0) {
          lpProcName -= m->ordinal_base;
-         unsigned int rva = get_long(m->eat + lpProcName * 4);
+         unsigned int rva = get_dword(m->eat + lpProcName * 4);
          if (rva) {
             h = rva + m->handle;
          }
@@ -3540,12 +3541,12 @@ unsigned int myGetProcAddress(unsigned int hModule, unsigned int lpProcName) {
          int lo = 0;
          while (lo <= hi) {
             int mid = (hi + lo) / 2;
-            char *name = getString(get_long(m->ent + mid * 4) + m->handle);
+            char *name = getString(get_dword(m->ent + mid * 4) + m->handle);
             int res = strcmp(name, procName);
             if (res == 0) {
                free(name);
                lpProcName = get_word(m->eot + mid * 2); // - m->ordinal_base;
-               unsigned int rva = get_long(m->eat + lpProcName * 4);
+               unsigned int rva = get_dword(m->eat + lpProcName * 4);
                if (rva) {
                   h = rva + m->handle;
                }
@@ -3576,12 +3577,12 @@ unsigned int myGetProcAddress(unsigned int hModule, const char *procName) {
       int lo = 0;
       while (lo <= hi) {
          int mid = (hi + lo) / 2;
-         char *name = getString(get_long(m->ent + mid * 4) + m->handle);
+         char *name = getString(get_dword(m->ent + mid * 4) + m->handle);
          int res = strcmp(name, procName);
          if (res == 0) {
             free(name);
             unsigned int lpProcName = get_word(m->eot + mid * 2); // - m->ordinal_base;
-            unsigned int rva = get_long(m->eat + lpProcName * 4);
+            unsigned int rva = get_dword(m->eat + lpProcName * 4);
             if (rva) {
                h = rva + m->handle;
             }
@@ -3659,9 +3660,9 @@ void emu_GetProcAddress(unsigned int /*addr*/) {
 
 void makeImportLabel(unsigned int addr, unsigned int val) {
    for (unsigned int cnt = 0; cnt < 4; cnt++) {
-      do_unknown(addr + cnt, true); //undefine it
+      del_items(addr + cnt, true); //undefine it
    }
-   doDwrd(addr, 4);
+   create_dword(addr, 4);
    if (val) {
       char *name = reverseLookupExport(val);
       if (name && !set_name(addr, name, SN_NOCHECK | SN_NOWARN)) { //failed, probably duplicate name
@@ -3788,7 +3789,7 @@ void emu_LdrLoadDll(unsigned int /*addr*/) {
    unsigned int pModuleHandle = pop(SIZE_DWORD);
 
    unsigned int len = get_word(pModuleFileName);
-   unsigned int buf = get_long(pModuleFileName + 4);
+   unsigned int buf = get_dword(pModuleFileName + 4);
    char *modName = (char*)malloc(len + 1);
    for (unsigned int i = 0; i < len; i++) {
       modName[i] = (char)get_word(buf + i * 2);
@@ -3796,7 +3797,7 @@ void emu_LdrLoadDll(unsigned int /*addr*/) {
    modName[len] = 0;
 
    HandleNode *m = moduleCommon(&modName);
-   patch_long(pModuleHandle, m->handle);
+   patch_dword(pModuleHandle, m->handle);
    eax = 0;
    if (doLogLib) {
       msg("call: LdrLoadDll(0x%x, 0x%x, \"%s\", 0x%x) = 0x%x\n", PathToFile, Flags, modName, pModuleHandle, eax); 
@@ -3817,7 +3818,7 @@ void emu_LdrGetProcedureAddress(unsigned int /*addr*/) {
    int i;
    unsigned int func;
    if (pFunctionName) {
-      func = myGetProcAddress(hModule, get_long(pFunctionName + 4));
+      func = myGetProcAddress(hModule, get_dword(pFunctionName + 4));
    }
    else {
       func = myGetProcAddress(hModule, Ordinal);
@@ -3857,7 +3858,7 @@ void emu_LdrGetProcedureAddress(unsigned int /*addr*/) {
           hModule, procName, Ordinal, pFunctionAddress, eax); 
    }
    free(procName);
-   patch_long(pFunctionAddress, func);
+   patch_dword(pFunctionAddress, func);
 }
 
 //HMODULE __stdcall emu_FreeLibrary(HANDLE hModule)
@@ -3977,9 +3978,9 @@ void doImports(PETables &pe) {
 //            reverseLookupExport((unsigned int)f);
          }
 //         msg("found %x for %s slot %x\n", f, fname, slot);
-         do_unknown(slot, 0);
-         doDwrd(slot, 4);
-         put_long(slot, f);
+         del_items(slot, 0);
+         create_dword(slot, 4);
+         put_dword(slot, f);
          makeImportLabel(slot, f);
          if (f) {
             char *funcname = getString(fname);
@@ -4008,7 +4009,7 @@ bool isModuleAddress(unsigned int addr) {
 
 int reverseLookupFunc(unsigned int EAT, unsigned int func, unsigned int max, unsigned int base) {
    for (unsigned int i = 0; i < max; i++) {
-      if ((get_long(EAT + i * 4) + base) == func) return (int)i;
+      if ((get_dword(EAT + i * 4) + base) == func) return (int)i;
    }
    return -1;
 }
@@ -4039,7 +4040,7 @@ char *reverseLookupExport(unsigned int addr) {
          if (idx != -1) {
             int ord = reverseLookupOrd(hl->eot, idx, hl->NoN);
             if (ord != -1) {
-               fname = getString(get_long(hl->ent + ord * 4) + hl->handle);
+               fname = getString(get_dword(hl->ent + ord * 4) + hl->handle);
    //            msg("x86emu: reverseLookupExport: %X == %s\n", addr, fname);
             }
             else {
@@ -4394,15 +4395,11 @@ void loadFunctionInfo(Buffer &b) {
 }
 
 void init_til(const char *tilFile) {
-   char err[256];
-   *err = 0;
+   qstring err;
 #if IDA_SDK_VERSION < 470
    char *tilpath = get_tilpath();     
-#else
-   char tilpath[260];
-   get_tilpath(tilpath, sizeof(tilpath));     
 #endif
-   ti = load_til(tilpath, tilFile, err, sizeof(err));
+   ti = load_til(tilFile, &err);
 }
 
 void emu_exit(unsigned int retval) {
@@ -4486,12 +4483,12 @@ void syscall() {
                segment_t *s = (segment_t *)segs.getn_area(segs.get_prev_area(ebx));
 #endif
                if (ebx && ebx != cbrk) {
-                  if (ebx > inf.omaxEA) {
+                  if (ebx > inf.omax_ea) {
                      unsigned int newbrk = (ebx + 0xfff) & ~0xfff;
                      if (s) {
-                        cbrk = (unsigned int)s->endEA;
+                        cbrk = (unsigned int)s->end_ea;
 //                        set_segm_end(cbrk - 1, newbrk, SEGMOD_KEEP | SEGMOD_SILENT);
-                        set_segm_end(s->startEA, newbrk, SEGMOD_KEEP | SEGMOD_SILENT);
+                        set_segm_end(s->start_ea, newbrk, SEGMOD_KEEP | SEGMOD_SILENT);
                         if (newbrk > cbrk) {
                            for (unsigned int i = cbrk; i < newbrk; i++) {
                               patch_byte(i, 0);
@@ -4568,21 +4565,21 @@ void syscall() {
       case PERS_FREEBSD_80:
          switch (syscallNum) {
             case BSD_SYS_EXIT:
-               emu_exit(get_long(esp + 4));
+               emu_exit(get_dword(esp + 4));
                break;
             case BSD_SYS_FORK:
                break;
             case BSD_SYS_READ:
-               eax = emu_read(get_long(esp + 4), get_long(esp + 8), get_long(esp + 12));
+               eax = emu_read(get_dword(esp + 4), get_dword(esp + 8), get_dword(esp + 12));
                break;
             case BSD_SYS_WRITE:
-               eax = emu_write(get_long(esp + 4), get_long(esp + 8), get_long(esp + 12));
+               eax = emu_write(get_dword(esp + 4), get_dword(esp + 8), get_dword(esp + 12));
                break;
             case BSD_SYS_OPEN:
-               eax = emu_open(get_long(esp + 4), get_long(esp + 8), get_long(esp + 12));
+               eax = emu_open(get_dword(esp + 4), get_dword(esp + 8), get_dword(esp + 12));
                break;
             case BSD_SYS_CLOSE:
-               eax = emu_close(get_long(esp + 4));
+               eax = emu_close(get_dword(esp + 4));
                break;
          }
          break;

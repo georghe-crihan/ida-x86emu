@@ -1,35 +1,26 @@
 
 #your Ida SDK location either relative to ida-x86emu/trunk
 #or absolute
-SDK = ../../..
+SDK = ../..
 
 OBJECTS_DIR = p64
 
 #Need to change the following to your Ida install location
 win32:IDA_APP = "C:/Program Files/Ida"
 linux-g++:IDA_APP = /opt/ida-$$(IDA_VERSION)
-macx:IDA_APP = "/Applications/IDA\ Pro\ $$(IDA_VERSION)/idaq.app/Contents
+macx:IDA_APP = "/Applications/IDA Pro $$(IDA_VERSION)/idaq.app/Contents"
+macx:IDA_LIB = "$${SDK}/lib/x64_mac_gcc_64/"
 
 #Need to change the following to your Qt install location
-macx:QT_LOC = /usr/local/qt/lib
-macx:QT_TAIL = .framework/Versions/4/Headers
+macx:QT_LOC = /Users/Shared/Qt/5.6.0-x64/lib
+macx:QT_TAIL = QtWidgets.framework/Versions/5/Headers
+#./lib/QtWidgets.framework/Versions/5/Headers/
 #create our own list of Qt modules
-macx:MODS = QtGui QtCore
-
-defineReplace(makeIncludes) {
-   variable = $$1
-   modules = $$eval($$variable)
-   dirs =
-   for(module, modules) {
-      dir = $${QT_LOC}/$${module}$${QT_TAIL}
-      dirs += $$dir
-   }
-   return($$dirs)
-}
+macx:QMAKE_INCDIR = $${QT_LOC}/$${QT_TAIL}
 
 TEMPLATE = lib
 
-#QT +=
+QT += widgets
 
 CONFIG += qt dll
 
@@ -37,7 +28,7 @@ INCLUDEPATH += $${SDK}/include
 
 DESTDIR = $${SDK}/bin/plugins
 
-DEFINES += __IDP__ __QT__ __EA64__
+DEFINES += __IDP__ __QT__ __EA64__ __X64__ __PLUGIN__
 win32:DEFINES += __NT__ WIN32
 win32:DEFINES -= UNICODE
 win32:DEFINES += _CRT_SECURE_NO_WARNINGS
@@ -53,27 +44,20 @@ win32-msvc2008: {
    }
 }
 linux-g++:LIBS += -L$${IDA_APP} -lida64
-macx:LIBS += -L$${IDA_APP}/MacOs -lida64
+macx:LIBS += -L$${IDA_LIB} -lida64
 
 #don't let qmake force search any libs other than the
 #ones that ship with Ida
 linux-g++:QMAKE_LFLAGS_RPATH =
 linux-g++:QMAKE_LIBDIR_QT =
 
-macx:QMAKE_INCDIR = $$makeIncludes(MODS)
 #add QTs actual include file location this way since -F is not
 #handled by QMAKE_INCDIR
-macx:QMAKE_CXXFLAGS += -m32 -F$${QT_LOC}
+macx:QMAKE_CXXFLAGS += -F$${QT_LOC}
 
-linux-g++:QMAKE_CXXFLAGS = -m32
+linux-g++:QMAKE_CXXFLAGS =
 
-linux-g++|macx: {
-   QMAKE_CXXFLAGS += -m32
-   QMAKE_CFLAGS += -m32
-   QMAKE_LFLAGS += -m32
-}
-
-macx:QMAKE_LFLAGS += -F$${IDA_APP}/Frameworks
+#macx:QMAKE_LFLAGS += -F$${IDA_APP}/Frameworks
 macx:QMAKE_LIBDIR_QT =
 
 SOURCES = x86emu.cpp \

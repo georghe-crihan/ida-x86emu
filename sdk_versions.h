@@ -90,9 +90,9 @@
 #ifndef IDA_SDK_VERSION            //SDK520 and later
 #if IDP_INTERFACE_VERSION == 76    //SDK490 and later
 
-#ifdef DOUNK_SIMPLE  //defined in bytes.hpp in SDK510
+#ifdef DELIT_SIMPLE  //defined in bytes.hpp in SDK510
 #define IDA_SDK_VERSION 510
-#else   //DOUNK_SIMPLE
+#else   //DELIT_SIMPLE
 
 #ifdef SEGDEL_PERM //defined in segment.hpp in SDK500
 #define IDA_SDK_VERSION 500
@@ -100,7 +100,7 @@
 #define IDA_SDK_VERSION 490
 #endif  //SEGDEL_PERM
 
-#endif  //DOUNK_SIMPLE
+#endif  //DELIT_SIMPLE
 
 #endif  //IDP_INTERFACE_VERSION == 76
 #endif  //IDA_SDK_VERSION

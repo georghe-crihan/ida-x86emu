@@ -89,14 +89,14 @@ void applyPEHeaderTemplates(unsigned int mz_addr) {
    tid_t ish = import_type(ti, -1, "IMAGE_SECTION_HEADER");
 #endif
    
-   doStruct(mz_addr, sizeof(_IMAGE_DOS_HEADER), idh);
+   create_struct(mz_addr, sizeof(_IMAGE_DOS_HEADER), idh);
    unsigned short e_lfanew = get_word(mz_addr + 0x3C);
    mz_addr += e_lfanew;
 
-   if (doStruct(mz_addr, sizeof(_IMAGE_NT_HEADERS), inth) == 0) {
-      do_unknown(mz_addr, 0);
+   if (create_struct(mz_addr, sizeof(_IMAGE_NT_HEADERS), inth) == 0) {
+      del_items(mz_addr, 0);
       set_cmt(mz_addr - e_lfanew, "!!Warning, MZ Header overlaps PE header!!", 0);
-      doStruct(mz_addr, sizeof(_IMAGE_NT_HEADERS), inth);
+      create_struct(mz_addr, sizeof(_IMAGE_NT_HEADERS), inth);
    }
 
    unsigned short num_sects = get_word(mz_addr + 6);
@@ -104,7 +104,7 @@ void applyPEHeaderTemplates(unsigned int mz_addr) {
    mz_addr += sizeof(_IMAGE_NT_HEADERS);
    
    for (unsigned short i = 0; i < num_sects; i++) {
-      doStruct(mz_addr + i * sizeof(_IMAGE_SECTION_HEADER), sizeof(_IMAGE_SECTION_HEADER), ish);
+      create_struct(mz_addr + i * sizeof(_IMAGE_SECTION_HEADER), sizeof(_IMAGE_SECTION_HEADER), ish);
    }
 }
 
@@ -113,24 +113,24 @@ void createSegment(unsigned int start, unsigned int size, unsigned char *content
    segment_t s;
    //create ida segment to hold headers
    memset(&s, 0, sizeof(s));
-   s.startEA = start;
-   s.endEA = start + size;
+   s.start_ea = start;
+   s.end_ea = start + size;
    s.align = saRelPara;
    s.comb = scPub;
    s.perm = SEGPERM_WRITE | SEGPERM_READ;
    s.bitness = 1;
    s.type = SEG_DATA;
    s.color = DEFCOLOR;
-   if (add_segm_ex(&s, name, "DATA", ADDSEG_QUIET | ADDSEG_NOSREG)) {
+   if (add_segm_ex(&s, name, "DATA", /*ADDSEG_QUIET |*/ ADDSEG_NOSREG)) {
       //zero out the newly created segment
-      for (ea_t ea = s.startEA; ea < s.endEA; ea++) {
+      for (ea_t ea = s.start_ea; ea < s.end_ea; ea++) {
          patch_byte(ea, 0);
       }
       if (content) {
-         patch_many_bytes(s.startEA, content, clen ? clen : size);
+         patch_bytes(s.start_ea, content, clen ? clen : size);
       }
 #ifdef DEBUG
-      msg("segment created %x-%x\n", s.startEA, s.endEA);
+      msg("segment created %x-%x\n", s.start_ea, s.end_ea);
 #endif
    }
    else {
@@ -207,10 +207,10 @@ void PETables::setSectionHeaders(unsigned int nsecs, _IMAGE_SECTION_HEADER *ish)
          if (seg) {
             ea_t ea;
             //zero from end of raw data to end of section
-            for (ea = seg->startEA + sections[i].SizeOfRawData; ea < (seg->endEA - 3); ea += 4) {
-               patch_long(ea, 0);
+            for (ea = seg->start_ea + sections[i].SizeOfRawData; ea < (seg->end_ea - 3); ea += 4) {
+               patch_dword(ea, 0);
             }
-            while (ea < seg->endEA) {
+            while (ea < seg->end_ea) {
                patch_byte(ea++, 0);
             }
          }
@@ -325,7 +325,7 @@ void PETables::buildThunks(FILE *f) {
             free(n);
          }
       }
-      if (isEnabled(base + min_rva) && isEnabled(base + max_rva - 1)) {
+      if (is_mapped(base + min_rva) && is_mapped(base + max_rva - 1)) {
       }
       else {
          unsigned int sz = max_rva - min_rva + 2;
@@ -344,7 +344,7 @@ void PETables::buildThunks(FILE *f) {
          free(strtable);
       }
       // Make sure there is a segment to hold the import table
-      if (!isEnabled(base + min_iat) && !isEnabled(base + max_iat - 1)) {
+      if (!is_mapped(base + min_iat) && !is_mapped(base + max_iat - 1)) {
          createSegment(base + min_iat, max_iat - min_iat, NULL);
       }
    }
@@ -513,11 +513,11 @@ unsigned int loadIntoIdb(FILE *dll) {
          segment_t *n = get_next_seg(handle);
 #endif
          if (n != NULL) {
-            unsigned int moduleEnd = getModuleEnd(n->startEA);
+            unsigned int moduleEnd = getModuleEnd(n->start_ea);
             if (moduleEnd == 0xffffffff) {
-               moduleEnd = n->endEA;
+               moduleEnd = n->end_ea;
             }
-            if ((n->startEA - handle) >= nt.OptionalHeader.SizeOfImage) {
+            if ((n->start_ea - handle) >= nt.OptionalHeader.SizeOfImage) {
                found = true;
             }
             else {
@@ -529,9 +529,9 @@ unsigned int loadIntoIdb(FILE *dll) {
          }
       }
       else {
-         unsigned int moduleEnd = getModuleEnd(s->startEA);
+         unsigned int moduleEnd = getModuleEnd(s->start_ea);
          if (moduleEnd == 0xffffffff) {
-            moduleEnd = s->endEA;
+            moduleEnd = s->end_ea;
          }
          handle = (moduleEnd + 0x10000) & ~0xffff;
       }

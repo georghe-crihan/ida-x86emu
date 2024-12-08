@@ -199,14 +199,22 @@ void register_funcs() {
    set_idc_func("EmuSetReg", idc_emu_setreg, idc_long_long);
    set_idc_func("EmuAddBpt", idc_emu_addbpt, idc_long);
 #else
-   set_idc_func_ex("EmuRun", idc_emu_run, idc_void, EXTFUN_BASE);
-   set_idc_func_ex("EmuTrace", idc_emu_trace, idc_void, EXTFUN_BASE);
-   set_idc_func_ex("EmuStepOne", idc_emu_step, idc_void, EXTFUN_BASE);
-   set_idc_func_ex("EmuTraceOne", idc_emu_trace_one, idc_void, EXTFUN_BASE);
-   set_idc_func_ex("EmuSync", idc_emu_sync, idc_void, EXTFUN_BASE);
-   set_idc_func_ex("EmuGetReg", idc_emu_getreg, idc_long, EXTFUN_BASE);
-   set_idc_func_ex("EmuSetReg", idc_emu_setreg, idc_long_long, EXTFUN_BASE);
-   set_idc_func_ex("EmuAddBpt", idc_emu_addbpt, idc_long, EXTFUN_BASE);
+   static const ext_idcfunc_t emu_run_desc = { "EmuRun", idc_emu_run, idc_void, NULL, 0, EXTFUN_BASE};
+   add_idc_func(emu_run_desc);
+   static const ext_idcfunc_t emu_trace_desc = { "EmuTrace", idc_emu_trace, idc_void, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_trace_desc);
+   static const ext_idcfunc_t emu_step_one_desc = { "EmuStepOne", idc_emu_step, idc_void, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_step_one_desc);
+   static const ext_idcfunc_t emu_trace_one_desc = { "EmuTraceOne", idc_emu_trace_one, idc_void, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_trace_one_desc);
+   static const ext_idcfunc_t emu_sync_desc = { "EmuSync", idc_emu_sync, idc_void, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_sync_desc);
+   static const ext_idcfunc_t emu_get_reg_desc = { "EmuGetReg", idc_emu_getreg, idc_long, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_get_reg_desc);
+   static const ext_idcfunc_t emu_set_reg_desc = { "EmuSetReg", idc_emu_setreg, idc_long_long, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_set_reg_desc);
+   static const ext_idcfunc_t emu_add_bpt_desc = { "EmuAddBpt", idc_emu_addbpt, idc_long, NULL, 0, EXTFUN_BASE };
+   add_idc_func(emu_add_bpt_desc);
 #endif
 }
 
@@ -224,13 +232,13 @@ void unregister_funcs() {
    set_idc_func("EmuSetReg", NULL, NULL);
    set_idc_func("EmuAddBpt", NULL, NULL);
 #else
-   set_idc_func_ex("EmuRun", NULL, NULL, 0);
-   set_idc_func_ex("EmuTrace", NULL, NULL, 0);
-   set_idc_func_ex("EmuStepOne", NULL, NULL, 0);
-   set_idc_func_ex("EmuTraceOne", NULL, NULL, 0);
-   set_idc_func_ex("EmuSync", NULL, NULL, 0);
-   set_idc_func_ex("EmuGetReg", NULL, NULL, 0);
-   set_idc_func_ex("EmuSetReg", NULL, NULL, 0);
-   set_idc_func_ex("EmuAddBpt", NULL, NULL, 0);
+   del_idc_func("EmuRun");
+   del_idc_func("EmuTrace");
+   del_idc_func("EmuStepOne");
+   del_idc_func("EmuTraceOne");
+   del_idc_func("EmuSync");
+   del_idc_func("EmuGetReg");
+   del_idc_func("EmuSetReg");
+   del_idc_func("EmuAddBpt");
 #endif
 }

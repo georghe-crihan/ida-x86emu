@@ -62,7 +62,7 @@
 #include <typeinf.hpp>
 #include <nalt.hpp>
 #include <segment.hpp>
-#include <srarea.hpp>
+#include <segregs.hpp>
 #include <typeinf.hpp>
 #include <struct.hpp>
 #include <entry.hpp>
@@ -93,8 +93,8 @@
 void memoryAccessException();
 
 #if IDA_SDK_VERSION >= 530
-TForm *mainForm;
-TCustomControl *stackCC;
+TWidget *mainForm;
+TWidget *stackCC;
 #else
 #define SEGMOD_SILENT 0
 #define SEGMOD_KEEP 0
@@ -201,7 +201,7 @@ extern til_t *ti;
 
 bool isWindowCreated = false;
 
-static int idaapi idpCallback(void * cookie, int code, va_list va);
+static ssize_t idaapi idpCallback(void * cookie, int code, va_list va);
 
 void getRandomBytes(void *buf, unsigned int len) {
 #ifdef __NT__
@@ -378,20 +378,20 @@ void syncDisplay() {
          e = esp;
          b = lastEsp;
       }
-      if (b < s->startEA) {
-         b = (unsigned int)s->startEA;
+      if (b < s->start_ea) {
+         b = (unsigned int)s->start_ea;
       }
-      if (e > s->endEA) {
-         e = (unsigned int)s->endEA;
+      if (e > s->end_ea) {
+         e = (unsigned int)s->end_ea;
       }
       for (unsigned int a = b; a < e; a += 4) {
-         unsigned int val = get_long(a);
+         unsigned int val = get_dword(a);
          segment_t *seg = getseg(val);
          if (seg) {
-            char name[256];
-            ssize_t s = get_nice_colored_name(val, name, sizeof(name), GNCN_NOCOLOR);
+            qstring name;
+            ssize_t s = get_nice_colored_name(&name, val, GNCN_NOCOLOR);
             if (s != 0) {
-               set_cmt(a, name, false);
+               set_cmt(a, name.c_str(), false);
             }
          }
       }
@@ -406,12 +406,11 @@ void syncDisplay() {
    segment_t *s = getseg(esp);
    if (s) {
       //make sure stack view exists
-      if (find_tform("IDA View-Stack")) {
+      if (find_widget("IDA View-Stack")) {
          idaplace_t p(esp, 0);
          jumpto(stackCC, &p, 0, 0);
       }
    }
-   switchto_tform(mainForm, false);
 #endif
 #endif
    jumpto(cpu.eip);
@@ -424,10 +423,10 @@ void forceCode() {
 #else
    int len = ua_ana0(cpu.eip);
 #endif
-#ifdef DOUNK_EXPAND
-   do_unknown_range(cpu.eip, len, DOUNK_EXPAND | DOUNK_DELNAMES);
+#ifdef DELIT_EXPAND
+   del_items(cpu.eip, len, DELIT_EXPAND | DELIT_DELNAMES);
 #else
-   do_unknown_range(cpu.eip, len, true);
+   del_items(cpu.eip, len, true);
 #endif
    auto_make_code(cpu.eip); //make code at eip, or ua_code(cpu.eip);
 }
@@ -437,15 +436,15 @@ void forceCode() {
 void codeCheck(void) {
    ea_t loc = cpu.eip;
    ea_t head = get_item_head(loc);
-   if (isUnknown(getFlags(loc))) {
+   if (is_unknown(get_full_flags(loc))) {
       forceCode(); //or ua_code(loc);
    }
    else if (loc != head) {
-      do_unknown(head, true); //undefine it
+      del_items(head, true); //undefine it
       forceCode(); //or ua_code(loc);
    }
-   else if (!isCode(getFlags(loc))) {
-      do_unknown(loc, true); //undefine it
+   else if (!is_code(get_full_flags(loc))) {
+      del_items(loc, true); //undefine it
       forceCode(); //or ua_code(loc);
    }
 /*
@@ -458,13 +457,13 @@ void codeCheck(void) {
    if (len1 != len2) {
       forceCode(); //or ua_code(loc);
    }
-   else if (isUnknown(getFlags(loc))) {
+   else if (is_unknown(get_full_flags(loc))) {
       forceCode(); //or ua_code(loc);
    }
-   else if (!isHead(getFlags(loc)) || !isCode(getFlags(loc))) {
-//      while (!isHead(getFlags(loc))) loc--; //find start of current
+   else if (!isHead(get_full_flags(loc)) || !is_code(get_full_flags(loc))) {
+//      while (!isHead(get_full_flags(loc))) loc--; //find start of current
       loc = get_item_head(loc);
-      do_unknown(loc, true); //undefine it
+      del_items(loc, true); //undefine it
       forceCode();
    }
 */
@@ -553,7 +552,7 @@ void dumpRange(unsigned int low, unsigned int hi) {
 //ask user for an address range and dump that address range
 //to a user named file;
 void dumpRange() {
-   dumpRange((unsigned int)get_screen_ea(), (unsigned int)inf.maxEA);
+   dumpRange((unsigned int)get_screen_ea(), (unsigned int)inf.max_ea);
 }
 
 //ask user for an address range and dump that address range
@@ -565,7 +564,7 @@ void dumpEmbededPE() {
       showErrorMessage("Failed to locate MS-DOS magic value, canceling dump.");
       return;
    }
-   unsigned int pebase = base + get_long(base + 0x3C);
+   unsigned int pebase = base + get_dword(base + 0x3C);
    if (get_word(pebase) != 0x4550) {   //check for PE magic
       showErrorMessage("Failed to locate PE magic value, canceling dump");
       return;
@@ -578,8 +577,8 @@ void dumpEmbededPE() {
    }
    unsigned int sectionBase = pebase + sizeof(IMAGE_NT_HEADERS);
    unsigned int lastSection = sectionBase + (numSections - 1) * sizeof(IMAGE_SECTION_HEADER);
-   unsigned int sectionOffset = get_long(lastSection + 20);
-   unsigned int sectionSize = get_long(lastSection + 16);
+   unsigned int sectionOffset = get_dword(lastSection + 20);
+   unsigned int sectionSize = get_dword(lastSection + 16);
    dumpRange(base, base + sectionOffset + sectionSize);
 }
 
@@ -803,7 +802,7 @@ void memLoadFile(unsigned int start) {
       FILE *f = qfopen(szFile, "rb");
       if (f) {
          while ((readBytes = qfread(f, buf, sizeof(buf))) > 0) {
-            patch_many_bytes(addr, buf, readBytes);
+            patch_bytes(addr, buf, readBytes);
             addr += readBytes;
    /*
             ptr = buf;
@@ -866,11 +865,11 @@ bool loadLibrary() {
                segment_t *n = get_next_seg(loadBase);
 #endif
                if (n != NULL) {
-                  unsigned int moduleEnd = getModuleEnd(n->startEA);
+                  unsigned int moduleEnd = getModuleEnd(n->start_ea);
                   if (moduleEnd == 0xffffffff) {
-                     moduleEnd = n->endEA;
+                     moduleEnd = n->end_ea;
                   }
-                  if ((n->startEA - loadBase) >= nt.OptionalHeader.SizeOfImage) {
+                  if ((n->start_ea - loadBase) >= nt.OptionalHeader.SizeOfImage) {
                      found = true;
                   }
                   else {
@@ -882,9 +881,9 @@ bool loadLibrary() {
                }
             }
             else {
-               unsigned int moduleEnd = getModuleEnd(s->startEA);
+               unsigned int moduleEnd = getModuleEnd(s->start_ea);
                if (moduleEnd == 0xffffffff) {
-                  moduleEnd = s->endEA;
+                  moduleEnd = s->end_ea;
                }
                loadBase = (moduleEnd + 0x10000) & ~0xffff;
             }
@@ -930,10 +929,10 @@ bool loadLibrary() {
 
          //set segment registers on new segment to match ES, DS, SS
 #if IDA_SDK_VERSION >= 650
-         set_default_segreg_value(s, R_ds, get_segreg(oep, R_ds));
-         set_default_segreg_value(s, R_es, get_segreg(oep, R_es));
-         set_default_segreg_value(s, R_cs, get_segreg(oep, R_cs));
-         set_default_segreg_value(s, R_ss, get_segreg(oep, R_ss));
+         set_default_sreg_value(s, R_ds, get_sreg(oep, R_ds));
+         set_default_sreg_value(s, R_es, get_sreg(oep, R_es));
+         set_default_sreg_value(s, R_cs, get_sreg(oep, R_cs));
+         set_default_sreg_value(s, R_ss, get_sreg(oep, R_ss));
 #else
          SetDefaultRegisterValue(s, R_ds, getSR(oep, R_ds));
          SetDefaultRegisterValue(s, R_es, getSR(oep, R_es));
@@ -943,7 +942,7 @@ bool loadLibrary() {
          unsigned char *buf = (unsigned char*)qalloc(nt.OptionalHeader.SizeOfHeaders);
          qfseek(f, 0, SEEK_SET);
          qfread(f, buf, nt.OptionalHeader.SizeOfHeaders);
-         patch_many_bytes(loadBase, buf, nt.OptionalHeader.SizeOfHeaders);
+         patch_bytes(loadBase, buf, nt.OptionalHeader.SizeOfHeaders);
          qfree(buf);
          for (int i = 0; i < nt.FileHeader.NumberOfSections; i++) {
             if (qfseek(f, sect[i].PointerToRawData, SEEK_SET) != 0) {
@@ -954,7 +953,7 @@ bool loadLibrary() {
                if (qfread(f, buf, sect[i].SizeOfRawData) != sect[i].SizeOfRawData) {
                   //this is a problem
                }
-               patch_many_bytes(loadBase + sect[i].VirtualAddress, buf, sect[i].SizeOfRawData);
+               patch_bytes(loadBase + sect[i].VirtualAddress, buf, sect[i].SizeOfRawData);
                qfree(buf);
             }
          }
@@ -968,16 +967,16 @@ bool loadLibrary() {
                unsigned int reloc = loadBase + nt.OptionalHeader.DataDirectory[5].VirtualAddress;
                unsigned int end = reloc + nt.OptionalHeader.DataDirectory[5].Size;
                while (reloc < end) {
-                  unsigned int base = loadBase + get_long(reloc);
-                  unsigned int size = (get_long(reloc + 4) - 8) / 2;
+                  unsigned int base = loadBase + get_dword(reloc);
+                  unsigned int size = (get_dword(reloc + 4) - 8) / 2;
                   for (unsigned int r = 0; r < size; r++) {
                      unsigned short v = get_word(reloc + 8 + r * 2);
                      if ((v & 0xf000) == 0x3000) {
                         v = v & 0xfff;
-                        patch_long(base + v, get_long(base + v) + delta);
+                        patch_dword(base + v, get_dword(base + v) + delta);
                      }
                   }
-                  reloc += get_long(reloc + 4);
+                  reloc += get_dword(reloc + 4);
                }
             }
          }
@@ -992,14 +991,14 @@ bool loadLibrary() {
          if (importDir) {
             importDir += loadBase;
             unsigned int dllName;
-            while ((dllName = get_long(importDir + 12)) != 0) {
+            while ((dllName = get_dword(importDir + 12)) != 0) {
                char *name = getString(dllName + loadBase);
                HandleNode *m = addModule(name, false, 0);
                free(name);
                if (m) {
-                  unsigned int iat = get_long(importDir + 16) + loadBase;
+                  unsigned int iat = get_dword(importDir + 16) + loadBase;
                   unsigned int desc;
-                  while ((desc = get_long(iat)) != 0) {
+                  while ((desc = get_dword(iat)) != 0) {
                      if (desc & 0x80000000) {
                         //import by ordinal
                      }
@@ -1012,9 +1011,9 @@ bool loadLibrary() {
                         else {
                            f = myGetProcAddress(getHandle(m), fname);
                         }
-                        do_unknown(iat, 0);
-                        doDwrd(iat, 4);
-                        put_long(iat, f);
+                        del_items(iat, 0);
+                        create_dword(iat, 4);
+                        put_dword(iat, f);
                         makeImportLabel(iat, f);
                         if (f) {
                            char *funcname = getString(fname);
@@ -1039,15 +1038,15 @@ bool loadLibrary() {
          //apply names for all exports
          unsigned int exportTable = nt.OptionalHeader.DataDirectory[0].VirtualAddress + loadBase;
          if (exportTable != 0) {
-            unsigned int non = get_long(exportTable + 24);
-            unsigned int funcTable = loadBase + get_long(exportTable + 28);
-            unsigned int nameTable = loadBase + get_long(exportTable + 32);
-            unsigned int ordTable = loadBase + get_long(exportTable + 36);
+            unsigned int non = get_dword(exportTable + 24);
+            unsigned int funcTable = loadBase + get_dword(exportTable + 28);
+            unsigned int nameTable = loadBase + get_dword(exportTable + 32);
+            unsigned int ordTable = loadBase + get_dword(exportTable + 36);
             for (unsigned int nm = 0; nm < non; nm++) {
-               unsigned int nameAddr = loadBase + get_long(nameTable + nm * 4);
+               unsigned int nameAddr = loadBase + get_dword(nameTable + nm * 4);
                char *name = getString(nameAddr);
                unsigned short ord = get_word(ordTable + nm * 2);
-               unsigned int func = loadBase + get_long(funcTable + ord * 4);
+               unsigned int func = loadBase + get_dword(funcTable + ord * 4);
                add_entry(func, func, name, true);
                free(name);
             }
@@ -1246,7 +1245,7 @@ void trace() {
 // At the moment this is only used to catch the "saving" event
 // so that the plug-in can save its state in the database.
 //
-static int idaapi uiCallback(void * /*cookie*/, int code, va_list /*va*/) {
+static ssize_t idaapi uiCallback(void * /*cookie*/, int code, va_list /*va*/) {
    switch (code) {
    case ui_saving: {
       //
@@ -1305,7 +1304,7 @@ void setPEimageBase() {
       if (h == NULL) {
          return;
       }
-      unsigned int addr = (unsigned int)h->startEA;
+      unsigned int addr = (unsigned int)h->start_ea;
       if (get_word(addr) == DOS_MAGIC) {
          peImageBase = addr;
       }
@@ -1343,9 +1342,9 @@ static void loadBaseCommon() {
 // At the moment this is only used to catch the "saving" event
 // so that the plug-in can save its state in the database.
 //
-static int idaapi idpCallback(void * /*cookie*/, int code, va_list /*va*/) {
+static ssize_t idaapi idpCallback(void * /*cookie*/, int code, va_list /*va*/) {
    switch (code) {
-   case processor_t::newfile: {
+   case processor_t::ev_newfile: {
       //
       // a new database has been opened
       //
@@ -1355,14 +1354,15 @@ static int idaapi idpCallback(void * /*cookie*/, int code, va_list /*va*/) {
       loadBaseCommon();
       break;
    }
-   case processor_t::closebase: {
+   // FIXME: move to idb callback!
+   case idb_event::closebase: {
 #ifdef DEBUG
       msg(PLUGIN_NAME": closebase notification\n");
 #endif
       clearFunctionInfoList();
       break;
    }
-   case processor_t::oldfile: {
+   case processor_t::ev_oldfile: {
       if (netnode_exist(module_node)) {
          // There's a module_node in the database.  Attempt to
          // instantiate the module info list from it.
@@ -1609,17 +1609,17 @@ FILE *LoadHeadersCommon(unsigned int addr, segment_t &s, bool createSeg = true) 
    if (f && createSeg) {
       //create the new segment
       memset(&s, 0, sizeof(s));
-      s.startEA = addr;
-      s.endEA = BADADDR;
+      s.start_ea = addr;
+      s.end_ea = BADADDR;
       s.align = saRelPara;
       s.comb = scPub;
       s.perm = SEGPERM_WRITE | SEGPERM_READ;
       s.bitness = 1;
       s.type = SEG_DATA;
       s.color = DEFCOLOR;
-      if (add_segm_ex(&s, ".headers", "DATA", ADDSEG_QUIET | ADDSEG_NOSREG)) {
+      if (add_segm_ex(&s, ".headers", "DATA", /*ADDSEG_QUIET |*/ ADDSEG_NOSREG)) {
          //zero out the newly created segment
-         for (ea_t ea = s.startEA; ea < s.endEA; ea++) {
+         for (ea_t ea = s.start_ea; ea < s.end_ea; ea++) {
             patch_byte(ea, 0);
          }
       }
@@ -1663,8 +1663,8 @@ unsigned int PELoadHeaders() {
          if (h == NULL) {
             continue;
          }
-         if (get_word(h->startEA) == DOS_MAGIC) {
-            addr = (unsigned int)h->startEA;
+         if (get_word(h->start_ea) == DOS_MAGIC) {
+            addr = (unsigned int)h->start_ea;
 //            msg("peImageBase missing, trying %x\n", addr);
             break;
          }
@@ -1687,12 +1687,12 @@ unsigned int PELoadHeaders() {
 //      msg("petable_node does not exist yet\n");
 
       IMAGE_NT_HEADERS nt;
-      unsigned int pe_offset = get_long(addr + 0x3C);
+      unsigned int pe_offset = get_dword(addr + 0x3C);
 
-      get_many_bytes(addr + pe_offset, &nt, sizeof(nt));
+      get_bytes(&nt, sizeof(nt), addr + pe_offset);
 
       IMAGE_SECTION_HEADER *sect = new IMAGE_SECTION_HEADER[nt.FileHeader.NumberOfSections];
-      get_many_bytes(addr + pe_offset + sizeof(nt), sect, sizeof(IMAGE_SECTION_HEADER) * nt.FileHeader.NumberOfSections);
+      get_bytes(sect, sizeof(IMAGE_SECTION_HEADER) * nt.FileHeader.NumberOfSections, addr + pe_offset + sizeof(nt));
 
       pe.setBase(nt.OptionalHeader.ImageBase);
       pe.setNtHeaders(&nt);
@@ -1717,10 +1717,10 @@ unsigned int PELoadHeaders() {
          IMAGE_DOS_HEADER *dos;
          IMAGE_NT_HEADERS *nt;
          IMAGE_SECTION_HEADER *sect;
-         addr = (unsigned int)s.startEA;
-         unsigned int need = (unsigned int)s.endEA - addr;
+         addr = (unsigned int)s.start_ea;
+         unsigned int need = (unsigned int)s.end_ea - addr;
 
-         byte *buf = (byte*)malloc(need);
+         unsigned char *buf = (unsigned char*)malloc(need);
          fread(buf, 1, need, f);
          dos = (IMAGE_DOS_HEADER*)buf;
 
@@ -1732,7 +1732,7 @@ unsigned int PELoadHeaders() {
          pe.setSectionHeaders(nt->FileHeader.NumberOfSections, sect);
 
          need = sect[0].PointerToRawData;
-         patch_many_bytes(s.startEA, buf, nt->OptionalHeader.SizeOfHeaders);
+         patch_bytes(s.start_ea, buf, nt->OptionalHeader.SizeOfHeaders);
 
          applyPEHeaderTemplates(addr);
 
@@ -1751,8 +1751,8 @@ unsigned int PELoadHeaders() {
 
 unsigned int ELFLoadHeaders() {
    segment_t s;
-   unsigned int addr = (unsigned int)inf.minEA;
-   if (get_long(addr) == ELF_MAGIC) {
+   unsigned int addr = (unsigned int)inf.min_ea;
+   if (get_dword(addr) == ELF_MAGIC) {
       //header is already present
       return addr;
    }
@@ -1765,8 +1765,8 @@ unsigned int ELFLoadHeaders() {
    if (f) {
       Elf32_Ehdr *elf;
       Elf32_Phdr *phdr;
-      addr = (unsigned int)s.startEA;
-      unsigned int need = (unsigned int)s.endEA - addr;
+      addr = (unsigned int)s.start_ea;
+      unsigned int need = (unsigned int)s.end_ea - addr;
 
 #if (IDA_SDK_VERSION < 520)
       tid_t elf_hdr = til2idb(-1, "Elf32_Ehdr");
@@ -1776,7 +1776,7 @@ unsigned int ELFLoadHeaders() {
       tid_t elf_phdr = import_type(ti, -1, "Elf32_Phdr");
 #endif
 
-      byte *buf = (byte*)malloc(need);
+      unsigned char *buf = (unsigned char*)malloc(need);
       fread(buf, 1, need, f);
       elf = (Elf32_Ehdr*)buf;
       phdr = (Elf32_Phdr*)(buf + elf->e_phoff);
@@ -1784,12 +1784,12 @@ unsigned int ELFLoadHeaders() {
       if (phdr[0].p_offset < need) {
          need = phdr[0].p_offset;
       }
-      patch_many_bytes(s.startEA, buf, need);
+      patch_bytes(s.start_ea, buf, need);
 
-      doStruct(addr, sizeof(Elf32_Ehdr), elf_hdr);
+      create_struct(addr, sizeof(Elf32_Ehdr), elf_hdr);
       addr += elf->e_phoff;
       for (int i = 0; i < elf->e_phnum; i++) {
-         doStruct(addr + i * sizeof(Elf32_Phdr), sizeof(Elf32_Phdr), elf_phdr);
+         create_struct(addr + i * sizeof(Elf32_Phdr), sizeof(Elf32_Phdr), elf_phdr);
       }
       free(buf);
       fclose(f);
@@ -1798,13 +1798,13 @@ unsigned int ELFLoadHeaders() {
 }
 
 void initListEntry(unsigned int le) {
-   patch_long(le, le);              //Flink
-   patch_long(le + 4, le);          //Blink
+   patch_dword(le, le);              //Flink
+   patch_dword(le + 4, le);          //Blink
 }
 
 unsigned int mapNtDataPage(HandleNode *ntdll) {
    unsigned int res = 0;
-   unsigned int pe = ntdll->handle + get_long(ntdll->handle + 0x3c);
+   unsigned int pe = ntdll->handle + get_dword(ntdll->handle + 0x3c);
 #ifdef DEBUG
    msg("mapNtDataPage: ntdll - 0x%x, pe: 0x%x\n", ntdll, pe);
 #endif
@@ -1820,7 +1820,7 @@ unsigned int mapNtDataPage(HandleNode *ntdll) {
       int match = strcmp(sname, ".data");
       free(sname);
       if (match == 0) {
-         res = ntdll->handle + get_long(sect + 12);
+         res = ntdll->handle + get_dword(sect + 12);
          //only map one page, could map more
          createSegment(res, 0x1000, NULL, 0, "ntdll.data");
       }
@@ -1850,11 +1850,11 @@ void initPebLdrData(unsigned int pebBase) {
    msg(PLUGIN_NAME": pebLdrData set\n");
 #endif
 
-   patch_long(pebBase + PEB_LDR_DATA, pebLdrData);
+   patch_dword(pebBase + PEB_LDR_DATA, pebLdrData);
 
 //   unsigned int moduleList = pebLdrData + 0x1C;
-   patch_long(pebLdrData, 0x24);              //Length
-   patch_long(pebLdrData + 4, 1);          //Initialized
+   patch_dword(pebLdrData, 0x24);              //Length
+   patch_dword(pebLdrData + 4, 1);          //Initialized
 
    initListEntry(pebLdrData + 0xC);  //InLoadOrderModuleList
    initListEntry(pebLdrData + 0x14);  //InMemoryOrderModuleList
@@ -1990,7 +1990,7 @@ Buffer *makeLinuxEnv(const char *env[], const char *userName, const char *hostNa
 
 //notification hook function for idb notifications
 #if IDA_SDK_VERSION >= 510      //HT_IDB introduced in SDK 510
-int idaapi idb_hook(void * /*user_data*/, int notification_code, va_list va) {
+ssize_t idaapi idb_hook(void * /*user_data*/, int notification_code, va_list va) {
    if (notification_code == idb_event::byte_patched) {
       // A byte has been patched
       // in: ea_t ea
@@ -1998,13 +1998,13 @@ int idaapi idb_hook(void * /*user_data*/, int notification_code, va_list va) {
       segment_t *st = get_segm_by_name(".stack");
       if (st && st->contains(ea)) {
          ea &= 0xFFFFFFFC;   //round down to unsigned int boundary
-         unsigned int val = get_long(ea);
+         unsigned int val = get_dword(ea);
          segment_t *seg = getseg(val);
          if (seg) {
-            char name[256];
-            ssize_t s = get_nice_colored_name(val, name, sizeof(name), GNCN_NOCOLOR);
+            qstring name;
+            ssize_t s = get_nice_colored_name(&name, val, GNCN_NOCOLOR);
             if (s != 0) {
-               set_cmt(ea, name, false);
+               set_cmt(ea, name.c_str(), false);
             }
          }
          else {
@@ -2018,7 +2018,7 @@ int idaapi idb_hook(void * /*user_data*/, int notification_code, va_list va) {
 
 void formatStack(unsigned int begin, unsigned int end) {
    while (begin < end) {
-      do_data_ex(begin, dwrdflag(), 4, BADNODE);
+      create_data(begin, dword_flag(), 4, BADNODE);
       begin += 4;
    }
 #if IDA_SDK_VERSION >= 510      //HT_IDB introduced in SDK 510
@@ -2057,15 +2057,15 @@ unsigned int createWindowsPEB() {
    //0x7ffde000  is most common PEB address in Vista followed by 0x7ffdf000
    unsigned int pebBase = 0x7ffdf000;
    MemMgr::mmap(pebBase, 0x1000, 0, 0, ".peb");
-   patch_long(pebBase, 0);              //zero out BeingDebugged flag
-   patch_long(pebBase + PEB_IMAGE_BASE, peImageBase);
+   patch_dword(pebBase, 0);              //zero out BeingDebugged flag
+   patch_dword(pebBase + PEB_IMAGE_BASE, peImageBase);
 
    unsigned int heapBase = (x86emu_node.altval(X86_MAXEA) + 0x1000) & 0xfffff000;
    unsigned int heap = addHeapCommon(0x10000, heapBase);
-   patch_long(pebBase + PEB_MAX_HEAPS, (0x1000 - SIZEOF_PEB) / 4);   //0x1000 == PAGE_SIZE
-   patch_long(pebBase + PEB_PROCESS_HEAP, heap);
-   patch_long(pebBase + PEB_NUM_HEAPS, 1);
-   patch_long(pebBase + SIZEOF_PEB + 4, heap);
+   patch_dword(pebBase + PEB_MAX_HEAPS, (0x1000 - SIZEOF_PEB) / 4);   //0x1000 == PAGE_SIZE
+   patch_dword(pebBase + PEB_PROCESS_HEAP, heap);
+   patch_dword(pebBase + PEB_NUM_HEAPS, 1);
+   patch_dword(pebBase + SIZEOF_PEB + 4, heap);
 
    // NEED TO MOVE LdrData out of the PEB
    
@@ -2077,8 +2077,8 @@ unsigned int createWindowsPEB() {
    msg(PLUGIN_NAME": eb created\n");
 #endif
 
-   patch_long(pebBase + PEB_TLS_BITMAP, pebBase + PEB_TLS_BITMAP_BITS);
-   patch_long(pebBase + PEB_TLS_EXP_BITMAP, pebBase + PEB_TLS_EXP_BITMAP_BITS);
+   patch_dword(pebBase + PEB_TLS_BITMAP, pebBase + PEB_TLS_BITMAP_BITS);
+   patch_dword(pebBase + PEB_TLS_EXP_BITMAP, pebBase + PEB_TLS_EXP_BITMAP_BITS);
 
    //heap needs to be initialized here
    //env string is sequence of \0 terminated WCHAR pointed to by proc_parms + 0x48
@@ -2114,16 +2114,16 @@ unsigned int createWindowsPEB() {
       patch_byte(pCmdLineA + i, cmdLine[i]);
    }
 
-   patch_long(pebBase + PEB_PROCESS_PARMS, proc_parms);
+   patch_dword(pebBase + PEB_PROCESS_PARMS, proc_parms);
 
-   patch_long(proc_parms + 0x18, 3);    //StandardInput
-   patch_long(proc_parms + 0x1C, 15);   //StandardOutput
-   patch_long(proc_parms + 0x20, 15);   //StandardError
+   patch_dword(proc_parms + 0x18, 3);    //StandardInput
+   patch_dword(proc_parms + 0x1C, 15);   //StandardOutput
+   patch_dword(proc_parms + 0x20, 15);   //StandardError
 
    patch_word(proc_parms + 0x40, cmdLineLen * 2);
    patch_word(proc_parms + 0x42, cmdLineLen * 2);
-   patch_long(proc_parms + 0x44, cmd_line);
-   patch_long(proc_parms + PARMS_ENV_PTR, env_buf);
+   patch_dword(proc_parms + 0x44, cmd_line);
+   patch_dword(proc_parms + PARMS_ENV_PTR, env_buf);
 
    x86emu_node.altset(EMU_COMMAND_LINE, pCmdLineA);
 
@@ -2145,9 +2145,9 @@ unsigned int createWindowsPEB() {
    }
    patch_word(proc_parms + 0x70, ulen * 2);
    patch_word(proc_parms + 0x72, ulen * 2);
-   patch_long(proc_parms + 0x74, pWindow);
+   patch_dword(proc_parms + 0x74, pWindow);
 
-   patch_long(proc_parms + SIZEOF_PROCESS_PARAMETERS, pWindow + ulen * 2);
+   patch_dword(proc_parms + SIZEOF_PROCESS_PARAMETERS, pWindow + ulen * 2);
 
    //DesktopInfo
    char *desktop = "Winsta0\\Default";
@@ -2161,14 +2161,14 @@ unsigned int createWindowsPEB() {
 
    patch_word(proc_parms + 0x78, ulen * 2);
    patch_word(proc_parms + 0x7a, ulen * 2);
-   patch_long(proc_parms + 0x7c, pDesktop);
+   patch_dword(proc_parms + 0x7c, pDesktop);
 
-   patch_long(proc_parms + SIZEOF_PROCESS_PARAMETERS + 4, pDesktop + ulen * 2);
+   patch_dword(proc_parms + SIZEOF_PROCESS_PARAMETERS + 4, pDesktop + ulen * 2);
 
-   patch_long(pebBase + PEB_OS_MAJOR, OSMajorVersion);   //varies with o/s personality
-   patch_long(pebBase + PEB_OS_MINOR, OSMinorVersion);   //varies with o/s personality
-   patch_long(pebBase + PEB_OS_BUILD, OSBuildNumber);   //varies with o/s personality
-   patch_long(pebBase + PEB_OS_PLATFORM_ID, 2);    //OSPlatformId
+   patch_dword(pebBase + PEB_OS_MAJOR, OSMajorVersion);   //varies with o/s personality
+   patch_dword(pebBase + PEB_OS_MINOR, OSMinorVersion);   //varies with o/s personality
+   patch_dword(pebBase + PEB_OS_BUILD, OSBuildNumber);   //varies with o/s personality
+   patch_dword(pebBase + PEB_OS_PLATFORM_ID, 2);    //OSPlatformId
 
    return pebBase;
 }
@@ -2188,15 +2188,15 @@ void createWindowsTEB(unsigned int peb) {
    getRandomBytes(&pid, 2);
    pid = (pid % 3000) + 1000;
 
-   patch_long(fsBase + TEB_PROCESS_ID, pid);
-   patch_long(fsBase + TEB_THREAD_ID, tid);
+   patch_dword(fsBase + TEB_PROCESS_ID, pid);
+   patch_dword(fsBase + TEB_THREAD_ID, tid);
 
-   patch_long(fsBase + TEB_LINEAR_ADDR, fsBase);  //teb self pointer
-   patch_long(fsBase + TEB_PEB_PTR, ebx);     //peb self pointer
+   patch_dword(fsBase + TEB_LINEAR_ADDR, fsBase);  //teb self pointer
+   patch_dword(fsBase + TEB_PEB_PTR, ebx);     //peb self pointer
 
    createWindowsStack(0x130000, 0x4000);
-   patch_long(fsBase + TEB_STACK_TOP, 0x130000);     //top of stack
-   patch_long(fsBase + TEB_STACK_BOTTOM, 0x130000 - 0x4000);     //bottom of stack
+   patch_dword(fsBase + TEB_STACK_TOP, 0x130000);     //top of stack
+   patch_dword(fsBase + TEB_STACK_BOTTOM, 0x130000 - 0x4000);     //bottom of stack
 
    push(0, SIZE_DWORD);
    push(nt.OptionalHeader.AddressOfEntryPoint + nt.OptionalHeader.ImageBase, SIZE_DWORD);
@@ -2212,7 +2212,7 @@ void createWindowsTEB(unsigned int peb) {
    push(myGetProcAddress(k32, "UnhandledExceptionFilter"), SIZE_DWORD);  //kernel32 exception handler
    push(0xffffffff, SIZE_DWORD);  //end of SEH list
 
-   patch_long(fsBase, esp);  //last chance SEH record
+   patch_dword(fsBase, esp);  //last chance SEH record
 
    push(0, SIZE_DWORD);        //?????
    push(esp - 0x14, SIZE_DWORD);
@@ -2356,12 +2356,12 @@ void buildElfArgs() {
       while (*arg) argc++;
       while (argc--) {
          int len = strlen(mainArgs[argc]) + 1;
-         put_many_bytes(esp - len, mainArgs[argc], len);
+         put_bytes(esp - len, mainArgs[argc], len);
          esp -= len;
       }
    }
    int len = strlen(fname) + 1;
-   put_many_bytes(esp - len, fname, len);
+   put_bytes(esp - len, fname, len);
    esp -= len;
    //add other environment strings
    elfArgStart = esp;
@@ -2401,19 +2401,19 @@ void buildElfEnvironment(unsigned int elf_base) {
    int len = strlen(fname) + 1;
    esp -= len;
    unsigned int fileName = esp;
-   put_many_bytes(esp, fname, len);
+   put_bytes(esp, fname, len);
    esp -= 2;
-   put_many_bytes(esp, "_=", 2);
+   put_bytes(esp, "_=", 2);
 
    //add other environment strings
    esp -= env_len;
-   put_many_bytes(esp, eb, env_len);
+   put_bytes(esp, eb, env_len);
    elfEnvStart = esp;
 
    //add argument strings, for now only exe name
    unsigned int argc = 1;
    esp -= len;
-   put_many_bytes(esp, fname, len);
+   put_bytes(esp, fname, len);
    elfArgStart = esp;
 
    esp &= 0xFFFFFFFC;
@@ -2421,14 +2421,14 @@ void buildElfEnvironment(unsigned int elf_base) {
    //need to create elf tables in here as well
 
    esp -= 5;
-   put_many_bytes(esp, "i686", 5);
+   put_bytes(esp, "i686", 5);
 
    unsigned int platform = esp;
 
    unsigned char rbytes[16];
    getRandomBytes(rbytes, 16);
    esp -= 16;
-   put_many_bytes(esp, rbytes, 16);    //AT_RANDOM
+   put_bytes(esp, rbytes, 16);    //AT_RANDOM
    unsigned int random = esp;
 
    esp &= 0xfffffffc;
@@ -2575,7 +2575,7 @@ bool haveHeapSegment() {
 int idaapi init(void) {
    cpuInit = false;
 
-   if (strcmp(inf.procName, "metapc")) return PLUGIN_SKIP;
+   if (strcmp(inf.procname, "metapc")) return PLUGIN_SKIP;
 
 //   msg(PLUGIN_NAME": hooking idp\n");
    hook_to_notification_point(HT_IDP, idpCallback, NULL);
@@ -2642,7 +2642,7 @@ void idaapi term(void) {
 //
 //
 
-void idaapi run(int /*arg*/) {
+bool idaapi run(size_t /*arg*/) {
    if (!isWindowCreated) {
       if (!netnode_exist(x86emu_node)) {
          //save basic info first time we encounter this database
@@ -2653,28 +2653,28 @@ void idaapi run(int /*arg*/) {
          x86emu_node.create(x86emu_node_name);
 
          segment_t *s = get_first_seg();
-         if (s && (s->startEA & 0xFFF)) {
-            unsigned int currstart = (unsigned int)s->startEA;
-            unsigned int newstart = (unsigned int)s->startEA & ~0xFFF;
-            set_segm_start(s->startEA, newstart, SEGMOD_SILENT);
+         if (s && (s->start_ea & 0xFFF)) {
+            unsigned int currstart = (unsigned int)s->start_ea;
+            unsigned int newstart = (unsigned int)s->start_ea & ~0xFFF;
+            set_segm_start(s->start_ea, newstart, SEGMOD_SILENT);
             for (unsigned int i = newstart; i < currstart; i++) {
                patch_byte(i, 0);
             }
          }
 
-         x86emu_node.altset(X86_MINEA, inf.minEA);
+         x86emu_node.altset(X86_MINEA, inf.min_ea);
 
          s = get_last_seg();
-         if (s && (s->endEA & 0xFFF)) {
-            unsigned int currend = (unsigned int)s->endEA;
-            unsigned int newend = (unsigned int)(s->endEA + 0xFFF) & ~0xFFF;
-            set_segm_end(s->startEA, newend, SEGMOD_SILENT);
+         if (s && (s->end_ea & 0xFFF)) {
+            unsigned int currend = (unsigned int)s->end_ea;
+            unsigned int newend = (unsigned int)(s->end_ea + 0xFFF) & ~0xFFF;
+            set_segm_end(s->start_ea, newend, SEGMOD_SILENT);
             for (unsigned int i = currend; i < newend; i++) {
                patch_byte(i, 0);
             }
          }
 
-         x86emu_node.altset(X86_MAXEA, inf.maxEA);
+         x86emu_node.altset(X86_MAXEA, inf.max_ea);
          getRandomBytes(&randVal, 4);
          x86emu_node.altset(X86_RANDVAL, randVal);
 
@@ -2718,7 +2718,7 @@ void idaapi run(int /*arg*/) {
             kernel_node.altset(OS_GDT_BASE, LINUX_GDT_BASE);
             kernel_node.altset(OS_GDT_LIMIT, LINUX_GDT_LIMIT);
 
-            kernel_node.altset(OS_LINUX_BRK, inf.maxEA);
+            kernel_node.altset(OS_LINUX_BRK, inf.max_ea);
          }
          x86emu_node.altset(OS_PERSONALITY, os_personality);
       }
@@ -2735,8 +2735,8 @@ void idaapi run(int /*arg*/) {
          unsigned int headerBase = PELoadHeaders();
          msg("headerBase is %x, valid = %d\n", headerBase, pe.valid);
          if (headerBase != 0xFFFFFFFF) {
-            unsigned int pe_offset = headerBase + get_long(headerBase + 0x3C);
-            get_many_bytes(pe_offset, &nt, sizeof(nt));
+            unsigned int pe_offset = headerBase + get_dword(headerBase + 0x3C);
+            get_bytes(&nt, sizeof(nt), pe_offset);
 
             if (pe.valid) {
                createWindowsProcess();
@@ -2818,11 +2818,11 @@ void idaapi run(int /*arg*/) {
       pCmdLineA = (unsigned int)x86emu_node.altval(EMU_COMMAND_LINE);
 
 #if IDA_SDK_VERSION >= 530
-      TForm *stackForm = open_disasm_window("Stack");
-      switchto_tform(stackForm, true);
+      TWidget *stackForm = open_disasm_window("Stack");
+      /*switchto_tform(stackForm, true);*/
       stackCC = get_current_viewer();
-      mainForm = find_tform("IDA View-A");
-      switchto_tform(mainForm, true);
+      mainForm = find_widget("IDA View-A");
+      /*switchto_tform(mainForm, true);*/
 #endif
       if (!cpuInit) {
          cpu.eip = (unsigned int)get_screen_ea();
