@@ -121,6 +121,7 @@ void createSegment(unsigned int start, unsigned int size, unsigned char *content
    s.bitness = 1;
    s.type = SEG_DATA;
    s.color = DEFCOLOR;
+   // FIXME
    if (add_segm_ex(&s, name, "DATA", /*ADDSEG_QUIET |*/ ADDSEG_NOSREG)) {
       //zero out the newly created segment
       for (ea_t ea = s.start_ea; ea < s.end_ea; ea++) {
