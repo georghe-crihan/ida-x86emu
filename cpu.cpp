@@ -801,7 +801,7 @@ void initiateInterrupt(unsigned int interrupt_number, unsigned int saved_eip) {
       //need to keep track of nested interrupts so that we know whether to
       //pop off the error code during the associated iret
       cpu.eip = handler;
-      IntrRecord *temp = (IntrRecord*) calloc(1, sizeof(IntrRecord));
+      IntrRecord *temp = (IntrRecord*) qcalloc(1, sizeof(IntrRecord));
       temp->next = intrList;
       intrList = temp;
       if (handler == SEH_MAGIC) {

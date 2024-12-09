@@ -38,6 +38,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <execinfo.h>
 #include "image.h"
 #endif
 
@@ -585,7 +586,7 @@ void dumpEmbededPE() {
 bool isStringPointer(const char *type_str) {
    bool result = false;
    int len = strlen(type_str);
-   char *buf = (char*)malloc(len + 1);
+   char *buf = (char*)qalloc(len + 1);
    char *p = buf;
    while (*type_str) {
       if (*type_str != ' ') {
@@ -1588,10 +1589,10 @@ FILE *LoadHeadersCommon(unsigned int addr, segment_t &s, bool createSeg = true) 
    char buf[260];
 #if (IDA_SDK_VERSION < 490)
    char *fname = get_input_file_path();
-   FILE *f = fopen(fname, "rb");
+   FILE *f = qfopen(fname, "rb");
 #else
    get_input_file_path(buf, sizeof(buf));
-   FILE *f = fopen(buf, "rb");
+   FILE *f = qfopen(buf, "rb");
 #endif
    if (f == NULL) {
       showErrorMessage("Original input file not found.");
@@ -1603,26 +1604,31 @@ FILE *LoadHeadersCommon(unsigned int addr, segment_t &s, bool createSeg = true) 
       buf[0] = 0;
       char *fname = getOpenFileName("Select input file", buf, sizeof(buf), filter);
       if (fname) {
-         f = fopen(buf, "rb");
+         f = qfopen(buf, "rb");
       }
    }
    if (f && createSeg) {
       //create the new segment
       memset(&s, 0, sizeof(s));
       s.start_ea = addr;
-      s.end_ea = BADADDR;
+      s.end_ea = s.start_ea + 0x4000; //BADADDR;
       s.align = saRelPara;
       s.comb = scPub;
       s.perm = SEGPERM_WRITE | SEGPERM_READ;
       s.bitness = 1;
       s.type = SEG_DATA;
       s.color = DEFCOLOR;
-      // FIXME
-      if (add_segm_ex(&s, ".headers", "DATA", /*ADDSEG_QUIET |*/ ADDSEG_NOSREG)) {
+      FIXME;
+      if (add_segm_ex(&s, ".headers", "DATA", ADDSEG_QUIET | ADDSEG_NOSREG)) {
          //zero out the newly created segment
          for (ea_t ea = s.start_ea; ea < s.end_ea; ea++) {
             patch_byte(ea, 0);
          }
+      } else {
+         ZZZ;
+         msg("%x, %x\n", s.start_ea, s.end_ea);
+         qfclose(f);
+         return NULL;
       }
    }
    else {
@@ -1638,13 +1644,14 @@ void loadResources(FILE *f) {
          unsigned int rsrcBase = pe.base + sh[i].VirtualAddress;
          segment_t *r = getseg(rsrcBase);
          if (r == NULL) {   //nothing loaded at rsrcBase address
-            if (fseek(f, sh[i].PointerToRawData, SEEK_SET) == 0) {
+            if (qfseek(f, sh[i].PointerToRawData, SEEK_SET) == 0) {
                unsigned int sz = sh[i].SizeOfRawData;
-               unsigned char *rsrc = (unsigned char*)malloc(sz);
-               if (fread(rsrc, sz, 1, f) != 1)  {
+               unsigned char *rsrc = (unsigned char*)qalloc(sz);
+               if (qfread(f, rsrc, sz) != sz)  {
                   free(rsrc);
                   return;
                }
+               ZZZ;
                createSegment(rsrcBase, sh[i].Misc.VirtualSize, rsrc, sz, ".rsrc");
                free(rsrc);
             }
@@ -1703,16 +1710,20 @@ unsigned int PELoadHeaders() {
 
       delete [] sect;
 
+      ZZZ;
       FILE *f = LoadHeadersCommon(addr & 0xFFFF0000, s, false);
+      ZZZ;
       if (f) {
          pe.buildThunks(f);
          loadResources(f);
-         fclose(f);
+         qfclose(f);
       }
       return addr;
    }
    else {
+      ZZZ;
       FILE *f = LoadHeadersCommon(addr & 0xFFFF0000, s);
+      ZZZ;
       if (f) {
 //         msg("Reading PE headers from exe file\n");
          IMAGE_DOS_HEADER *dos;
@@ -1721,8 +1732,8 @@ unsigned int PELoadHeaders() {
          addr = (unsigned int)s.start_ea;
          unsigned int need = (unsigned int)s.end_ea - addr;
 
-         unsigned char *buf = (unsigned char*)malloc(need);
-         fread(buf, 1, need, f);
+         unsigned char *buf = (unsigned char*)qalloc(need);
+         qfread(f, buf, need);
          dos = (IMAGE_DOS_HEADER*)buf;
 
          nt = (IMAGE_NT_HEADERS*)(buf + dos->e_lfanew);
@@ -1741,7 +1752,7 @@ unsigned int PELoadHeaders() {
 
          pe.buildThunks(f);
          loadResources(f);
-         fclose(f);
+         qfclose(f);
          return addr;
       }
    }
@@ -1762,7 +1773,9 @@ unsigned int ELFLoadHeaders() {
       base_addr -= 0x1000;
    }
    msg("%x %x\n", addr, base_addr);
+   ZZZ;
    FILE *f = LoadHeadersCommon(base_addr, s);
+   ZZZ;
    if (f) {
       Elf32_Ehdr *elf;
       Elf32_Phdr *phdr;
@@ -1777,8 +1790,8 @@ unsigned int ELFLoadHeaders() {
       tid_t elf_phdr = import_type(ti, -1, "Elf32_Phdr");
 #endif
 
-      unsigned char *buf = (unsigned char*)malloc(need);
-      fread(buf, 1, need, f);
+      unsigned char *buf = (unsigned char*)qalloc(need);
+      qfread(f, buf, need);
       elf = (Elf32_Ehdr*)buf;
       phdr = (Elf32_Phdr*)(buf + elf->e_phoff);
 
@@ -1792,8 +1805,8 @@ unsigned int ELFLoadHeaders() {
       for (int i = 0; i < elf->e_phnum; i++) {
          create_struct(addr + i * sizeof(Elf32_Phdr), sizeof(Elf32_Phdr), elf_phdr);
       }
-      free(buf);
-      fclose(f);
+      qfree(buf);
+      qfclose(f);
    }
    return base_addr;
 }
@@ -1823,6 +1836,7 @@ unsigned int mapNtDataPage(HandleNode *ntdll) {
       if (match == 0) {
          res = ntdll->handle + get_dword(sect + 12);
          //only map one page, could map more
+         ZZZ;
          createSegment(res, 0x1000, NULL, 0, "ntdll.data");
       }
    }
@@ -2275,7 +2289,7 @@ void buildElfMainArgs() {
    }
    push(0, SIZE_DWORD);
    if (envc) {
-      unsigned int *env = (unsigned int*)malloc(envc * sizeof(unsigned int*));
+      unsigned int *env = (unsigned int*)qalloc(envc * sizeof(unsigned int*));
       ch = elfEnvStart;
       int i = 0;
       do {
@@ -2296,7 +2310,7 @@ void buildElfMainArgs() {
    }
    push(0, SIZE_DWORD);
    if (argc) {
-      unsigned int *args = (unsigned int*)malloc(argc * sizeof(unsigned int*));
+      unsigned int *args = (unsigned int*)qalloc(argc * sizeof(unsigned int*));
       ch = elfArgStart;
       int i = 0;
       do {
@@ -2331,7 +2345,7 @@ void buildMainArgs() {
 void parseMainArgs() {
 /*
    //count args
-   mainArgs = (char*)malloc(argc * sizeof(char*));
+   mainArgs = (char*)qalloc(argc * sizeof(char*));
    int j = 0;
    for (int i = 0; i < argc; i++) {
       mainArgs[i] = cmdLine + j;
@@ -2644,6 +2658,10 @@ void idaapi term(void) {
 //
 
 bool idaapi run(size_t /*arg*/) {
+  void *array[10];
+  size_t size;
+
+try {
    if (!isWindowCreated) {
       if (!netnode_exist(x86emu_node)) {
          //save basic info first time we encounter this database
@@ -2838,7 +2856,12 @@ bool idaapi run(size_t /*arg*/) {
       hook_to_notification_point(HT_UI, uiCallback, NULL);
       register_funcs();
    }
-
+} catch(...)
+{
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+}
 }
 
 //--------------------------------------------------------------------------

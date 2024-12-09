@@ -528,4 +528,5 @@ bool loadLibrary();
 #define aDIR_SEP "/"
 #endif
 
+#define FIXME ZZZ
 #endif

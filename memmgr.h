@@ -71,7 +71,7 @@
 #define MM_MAP_FIXED LINUX_MAP_FIXED
 #define MM_MAP_ANONYMOUS LINUX_MAP_ANONYMOUS
 
-void createNewSegment(const char *name, unsigned int base, unsigned int size);
+bool createNewSegment(const char *name, unsigned int base, unsigned int size);
 
 class MemMgr {
 public:

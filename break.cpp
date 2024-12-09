@@ -45,7 +45,7 @@ static bool isEmuBreakpoint(unsigned int addr) {
 void addBreakpoint(unsigned int addr) {
    if (isEmuBreakpoint(addr)) return;
    if (count == size) {
-      bp_list = (unsigned int*) realloc(bp_list, (size + 10) * sizeof(unsigned int));
+      bp_list = (unsigned int*) qrealloc(bp_list, (size + 10) * sizeof(unsigned int));
       size += 10;
    }
    bp_list[count++] = addr;

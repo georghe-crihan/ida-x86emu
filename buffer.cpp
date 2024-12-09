@@ -18,7 +18,8 @@
    Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include <stdlib.h>
+//#include <stdlib.h>
+#include <pro.h>
 #include <string.h>
 #include "buffer.h"
 
@@ -51,7 +52,7 @@ Buffer::Buffer(unsigned char *buf, unsigned int len) {
 }
 
 void Buffer::init(unsigned int size) {
-   bptr = (unsigned char *)malloc(size);
+   bptr = (unsigned char *)qalloc(size);
    sz = bptr ? size : 0;
    rptr = wptr = 0;
    error = sz != size;
@@ -59,7 +60,7 @@ void Buffer::init(unsigned int size) {
 }
 
 Buffer::~Buffer() {
-   free(bptr);
+   qfree(bptr);
 }
 
 int Buffer::read(void *data, unsigned int len) {
@@ -93,9 +94,9 @@ int Buffer::write(const void *data, unsigned int len) {
 int Buffer::readString(char **str) {
    unsigned int len;
    if (read(&len, sizeof(len)) == 0) {
-      *str = (char*)malloc(len);
+      *str = (char*)qalloc(len);
       if (*str && read(*str, len) == 0) return 0;
-      free(*str);
+      qfree(*str);
    }
    error = true;
    return 1;

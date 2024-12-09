@@ -286,7 +286,7 @@ char *checkModuleExtension(char *module) {
    int len = strlen(module);
    if (dot == NULL) {
       int newlen = len + 5;
-      result = (char*)realloc(module, newlen);
+      result = (char*)qrealloc(module, newlen);
       if (result) {
          qstrncat(result, ".dll", newlen);
       }
@@ -731,7 +731,7 @@ unsigned int getId(HandleNode *m) {
 }
 
 HandleNode *addNewModuleNode(const char *mod, unsigned int h, unsigned int id) {
-   HandleNode *m = (HandleNode*) calloc(1, sizeof(HandleNode));
+   HandleNode *m = (HandleNode*) qcalloc(1, sizeof(HandleNode));
    m->next = moduleHead;
    moduleHead = m;
    m->moduleName = _strdup(mod);
@@ -777,12 +777,12 @@ HandleNode *addModule(const char *mod, bool loading, int id, bool addToPeb) {
          module_name[len++] = DIR_SEP;
          module_name[len] = 0;
          ::qstrncat(module_name, mod, sizeof(module_name));
-         FILE *f = fopen(module_name, "rb");
+         FILE *f = qfopen(module_name, "rb");
          if (f == NULL) {   //try it in lower case
             for (int i = len; module_name[i]; i++) {
                module_name[i] = tolower(module_name[i]);
             }
-            f = fopen(module_name, "rb");
+            f = qfopen(module_name, "rb");
          }
          if (f == NULL) {
             int load = R_YES;
@@ -800,7 +800,7 @@ HandleNode *addModule(const char *mod, bool loading, int id, bool addToPeb) {
                ::qsnprintf(title, sizeof(title), "Open %s", mod);
                char *fname = getOpenFileName(title, module_name, sizeof(module_name), filter, lastDir);
                if (fname) {
-                  f = fopen(fname, "rb");
+                  f = qfopen(fname, "rb");
                   char *end = strrchr(module_name, DIR_SEP);
                   if (end) {
                      *end = 0;
@@ -818,7 +818,7 @@ HandleNode *addModule(const char *mod, bool loading, int id, bool addToPeb) {
          if (f) {
             h = loadIntoIdb(f);
             if (h == 0xFFFFFFFF) h = 0;
-            fclose(f);
+            qfclose(f);
          }
          if (h == 0) {
             warning("Failure loading %s, faking it.", mod);
@@ -955,14 +955,14 @@ char *getString(unsigned int addr) {
    if (addr) {
       while ((ch = get_byte(addr++)) != 0) {
          if (i == size) {
-            str = (unsigned char*)realloc(str, size + 16);
+            str = (unsigned char*)qrealloc(str, size + 16);
             size += 16;
          }
          if (ch == 0xFF) break;  //should be ascii, something wrong here
          str[i++] = ch;
       }
       if (i == size) {
-         str = (unsigned char*)realloc(str, size + 1);
+         str = (unsigned char*)qrealloc(str, size + 1);
       }
    }
    str[i] = 0;
@@ -984,7 +984,7 @@ char *getStringW(unsigned int addr) {
    if (addr) {
       while ((ch = get_word(addr)) != 0) {
          if (i == size) {
-            str = (unsigned char*)realloc(str, size + 16);
+            str = (unsigned char*)qrealloc(str, size + 16);
             size += 16;
          }
          if (ch == 0xFF) break;  //should be ascii, something wrong here
@@ -992,7 +992,7 @@ char *getStringW(unsigned int addr) {
          addr += 2;
       }
       if (i == size) {
-         str = (unsigned char*)realloc(str, size + 1);
+         str = (unsigned char*)qrealloc(str, size + 1);
       }
    }
    str[i] = 0;
@@ -4120,7 +4120,7 @@ char *getFunctionPrototype(FunctionInfo *f) {
       //parse tinf to create prototype
       result = _strdup(buf);
       int len = strlen(result) + 3 + strlen(f->fname);
-      result = (char*)realloc(result, len);
+      result = (char*)qrealloc(result, len);
       qstrncat(result, " ", len);
       qstrncat(result, f->fname, len);
       qstrncat(result, "(", len);
@@ -4132,14 +4132,14 @@ char *getFunctionPrototype(FunctionInfo *f) {
          arginf.print(&type_str);
          ::qstrncpy(buf, type_str.c_str(), sizeof(buf));
          len = strlen(result) + 3 + strlen(buf);
-         result = (char*)realloc(result, len);
+         result = (char*)qrealloc(result, len);
          if (i) {
             qstrncat(result, ",", len);
          }
          qstrncat(result, buf, len);
       }
       len = strlen(result) + 2;
-      result = (char*)realloc(result, len);
+      result = (char*)qrealloc(result, len);
       qstrncat(result, ")", len);
    }
    return result;
@@ -4195,7 +4195,7 @@ char *getFunctionPrototype(FunctionInfo *f) {
       }
       result = _strdup(buf);
       int len = strlen(result) + 3 + strlen(f->fname);
-      result = (char*)realloc(result, len);
+      result = (char*)qrealloc(result, len);
       qstrncat(result, " ", len);
       qstrncat(result, f->fname, len);
       qstrncat(result, "(", len);
@@ -4204,14 +4204,14 @@ char *getFunctionPrototype(FunctionInfo *f) {
          //change to incorporate what we know from Ida
          print_type_to_one_line(buf, sizeof(buf), NULL, info[i].type.c_str());
          len = strlen(result) + 3 + strlen(buf);
-         result = (char*)realloc(result, len);
+         result = (char*)qrealloc(result, len);
          if (i) {
             qstrncat(result, ",", len);
          }
          qstrncat(result, buf, len);
       }
       len = strlen(result) + 2;
-      result = (char*)realloc(result, len);
+      result = (char*)qrealloc(result, len);
       qstrncat(result, ")", len);
    }
    return result;
@@ -4282,7 +4282,7 @@ char *getFunctionPrototype(FunctionInfo *f) {
       }
       result = _strdup(buf);
       int len = strlen(result) + 3 + strlen(f->fname);
-      result = (char*)realloc(result, len);
+      result = (char*)qrealloc(result, len);
       qstrncat(result, " ", len);
       qstrncat(result, f->fname, len);
       qstrncat(result, "(", len);
@@ -4295,14 +4295,14 @@ char *getFunctionPrototype(FunctionInfo *f) {
          //change to incorporate what we know from Ida
          print_type_to_one_line(buf, sizeof(buf), NULL, types[i]);
          len = strlen(result) + 3 + strlen(buf);
-         result = (char*)realloc(result, len);
+         result = (char*)qrealloc(result, len);
          if (i) {
             qstrncat(result, ",", len);
          }
          qstrncat(result, buf, len);
       }
       len = strlen(result) + 2;
-      result = (char*)realloc(result, len);
+      result = (char*)qrealloc(result, len);
       qstrncat(result, ")", len);
       if (f->stackItems) {
          free_funcarg_arrays(types, names, f->stackItems);   
@@ -4377,7 +4377,7 @@ void loadFunctionInfo(Buffer &b) {
    b.read(&count, sizeof(count));
    for (; count; count--) {
       f = new FunctionInfo;
-//      f = (FunctionInfo*)calloc(1, sizeof(FunctionInfo));
+//      f = (FunctionInfo*)qcalloc(1, sizeof(FunctionInfo));
       b.read(&len, sizeof(len));
       f->fname = (char*)::qalloc(len);
       b.read(f->fname, len);

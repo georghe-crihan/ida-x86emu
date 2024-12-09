@@ -10,8 +10,9 @@ g++ -g -D_DEBUG  -D__MAC__ -fvisibility=hidden -fvisibility-inlines-hidden \
 -o obj/x64_mac_gcc_32/${C}.o ${C}.cpp
 }
 
-rm -f ../../bin/plugins/cyr.dylib '/Users/mac/Applications/IDA Pro 7.0/ida.app/Contents/MacOS/plugins/cyr.dylib'
-#c cyr
-#c rp
-make -f makefile.ida __MAC__=1
-#cp ../../bin/plugins/cyr.dylib '/Users/mac/Applications/IDA Pro 7.0/ida.app/Contents/MacOS/plugins/'
+#qmake -o Makefile64.g++ x86emu64.pro -platform macx-g++
+rm -f ../../bin/plugins/x86emu.dylib '/Users/mac/Applications/IDA Pro 7.0/ida.app/Contents/MacOS/plugins/x86emu.dylib'
+#c emufuncs
+make -f Makefile64.g++
+make -f makefile.ida __MAC__=1 OBJDIR=p64
+#cp ../../bin/plugins/x86emu.dylib '/Users/mac/Applications/IDA Pro 7.0/ida.app/Contents/MacOS/plugins/'

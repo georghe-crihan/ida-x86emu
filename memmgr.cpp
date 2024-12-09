@@ -50,7 +50,7 @@
 static bool haveTEB = false;
 static sel_t tebSel = 0;
 
-void createNewSegment(const char *name, unsigned int base, unsigned int size) {
+bool createNewSegment(const char *name, unsigned int base, unsigned int size) {
 //msg("createNewSegment: %s\n", name);
    //create the new segment
    segment_t s;
@@ -74,6 +74,7 @@ void createNewSegment(const char *name, unsigned int base, unsigned int size) {
    s.color = DEFCOLOR;
    
 //   if (add_segm_ex(&s, name, "DATA", ADDSEG_QUIET | ADDSEG_NOSREG)) {
+   FIXME;
    if (add_segm_ex(&s, name, "CODE", ADDSEG_QUIET | ADDSEG_NOSREG)) {
       //zero out the newly created segment
       ea_t ea;
@@ -90,7 +91,9 @@ void createNewSegment(const char *name, unsigned int base, unsigned int size) {
          SetDefaultRegisterValue(&s, R_fs, tebSel);
 #endif
       }
-   }
+   } else
+     return false;
+   return true;
 }
 
 segment_t *next_seg(ea_t addr) {

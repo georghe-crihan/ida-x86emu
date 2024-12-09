@@ -63,13 +63,13 @@ static char *stringFromFile(FILE *f) {
    unsigned int len = 0;
    while (1) {
       p = n;
-      n = (char*)realloc(n, len + 1);
+      n = (char*)qrealloc(n, len + 1);
       if (n == NULL) {
-         free(p);
+         qfree(p);
          return NULL;
       }
       if ((n[len] = fgetc(f)) == EOF) {
-         free(n);
+         qfree(n);
          return NULL;
       }
       len++;
@@ -108,7 +108,7 @@ void applyPEHeaderTemplates(unsigned int mz_addr) {
    }
 }
 
-void createSegment(unsigned int start, unsigned int size, unsigned char *content, 
+bool createSegment(unsigned int start, unsigned int size, unsigned char *content, 
                    unsigned int clen, const char *name) {
    segment_t s;
    //create ida segment to hold headers
@@ -121,8 +121,8 @@ void createSegment(unsigned int start, unsigned int size, unsigned char *content
    s.bitness = 1;
    s.type = SEG_DATA;
    s.color = DEFCOLOR;
-   // FIXME
-   if (add_segm_ex(&s, name, "DATA", /*ADDSEG_QUIET |*/ ADDSEG_NOSREG)) {
+   ZZZ;
+   if (add_segm_ex(&s, name, "DATA", ADDSEG_QUIET | ADDSEG_NOSREG)) {
       //zero out the newly created segment
       for (ea_t ea = s.start_ea; ea < s.end_ea; ea++) {
          patch_byte(ea, 0);
@@ -138,13 +138,15 @@ void createSegment(unsigned int start, unsigned int size, unsigned char *content
 #ifdef DEBUG
       msg("seg create failed\n");
 #endif
+      return false;
    }
+   return true;
 }
 
 PETables::PETables() {
    valid = 0;
    base = 0;
-   nt = (_IMAGE_NT_HEADERS*)malloc(sizeof(_IMAGE_NT_HEADERS));
+   nt = (_IMAGE_NT_HEADERS*)qalloc(sizeof(_IMAGE_NT_HEADERS));
    sections = NULL;
    num_sections = 0;
    imports = NULL;
@@ -196,7 +198,7 @@ void PETables::setNtHeaders(_IMAGE_NT_HEADERS *inth) {
 
 void PETables::setSectionHeaders(unsigned int nsecs, _IMAGE_SECTION_HEADER *ish) {
    num_sections = nsecs;
-   sections = (_IMAGE_SECTION_HEADER*)malloc(num_sections * sizeof(_IMAGE_SECTION_HEADER));
+   sections = (_IMAGE_SECTION_HEADER*)qalloc(num_sections * sizeof(_IMAGE_SECTION_HEADER));
    if (sections == NULL) return;
    memcpy(sections, ish, num_sections * sizeof(_IMAGE_SECTION_HEADER));
    //bss type segments are zero filled by operating system loader
@@ -233,12 +235,12 @@ void PETables::buildThunks(FILE *f) {
 
       while (1) {
 //         msg("iat seeking to %x\n", import_rva);
-         if (fseek(f, import_rva, SEEK_SET)) {
+         if (qfseek(f, import_rva, SEEK_SET)) {
 //            msg("Could not seek to import table: %x\n", import_rva);
             destroy();
             return;
          }
-         if (fread(&desc, sizeof(desc), 1, f) != 1)  {
+         if (qfread(f, &desc, sizeof(desc)) != sizeof(desc))  {
 //            msg("Failed to read import table\n");
             destroy();
             return;
@@ -256,9 +258,9 @@ void PETables::buildThunks(FILE *f) {
             name_table = rvaToFileOffset(name_table);
          }
 
-         import_rva = ftell(f);
+         import_rva = qftell(f);
          name = rvaToFileOffset(name);
-         thunk_rec *tr = (thunk_rec*)calloc(1, sizeof(thunk_rec));
+         thunk_rec *tr = (thunk_rec*)qcalloc(1, sizeof(thunk_rec));
          if (tr == NULL)  {
 //            msg("Failed to alloc thunk record\n");
             destroy();
@@ -269,7 +271,7 @@ void PETables::buildThunks(FILE *f) {
          
          tr->next = imports;
          imports = tr;
-         if (fseek(f, name, SEEK_SET))  {
+         if (qfseek(f, name, SEEK_SET))  {
 //            msg("Could not seek to name %x\n", name);
             destroy();
             return;
@@ -281,8 +283,8 @@ void PETables::buildThunks(FILE *f) {
             return;
          }
 //         msg("thunk dll: %s\n", tr->dll_name);
-         if (fseek(f, name_table, SEEK_SET)) {
-//         if (fseek(f, iat, SEEK_SET)) {
+         if (qfseek(f, name_table, SEEK_SET)) {
+//         if (qfseek(f, iat, SEEK_SET)) {
             msg("Could not seek to iat\n");
             destroy();
             return;
@@ -290,13 +292,13 @@ void PETables::buildThunks(FILE *f) {
          if (desc.Name < min_rva) min_rva = desc.Name;
          if (desc.Name > max_rva) max_rva = desc.Name + strlen(tr->dll_name) + 1;
          while (1) {
-            tr->iat = (unsigned int*)realloc(tr->iat, (tr->iat_size + 1) * sizeof(unsigned int));
+            tr->iat = (unsigned int*)qrealloc(tr->iat, (tr->iat_size + 1) * sizeof(unsigned int));
             if (tr->iat == NULL) {
                msg("failed to realloc iat\n");
                destroy();
                return;
             }
-            if (fread(&tr->iat[tr->iat_size], sizeof(unsigned int), 1, f) != 1) {
+            if (qfread(f, &tr->iat[tr->iat_size], sizeof(unsigned int)) != sizeof(unsigned int)) {
                msg("Failed to read iat\n");
                destroy();
                return;
@@ -307,11 +309,11 @@ void PETables::buildThunks(FILE *f) {
          unsigned int end_iat = iat_base + 4 * tr->iat_size;
          if (end_iat > max_iat) max_iat = end_iat;
          
-//         tr->names = (char**)calloc(tr->iat_size, sizeof(char*));
+//         tr->names = (char**)qcalloc(tr->iat_size, sizeof(char*));
          for (int i = 0; tr->iat[i]; i++) {
             unsigned int name_rva = tr->iat[i];
             if (name_rva & 0x80000000) continue;  //import by ordinal
-            if (fseek(f, rvaToFileOffset(name_rva + 2), SEEK_SET)) {
+            if (qfseek(f, rvaToFileOffset(name_rva + 2), SEEK_SET)) {
                msg("Could not seek to name_rva (by ordinal)\n");
                destroy();
                return;
@@ -323,29 +325,31 @@ void PETables::buildThunks(FILE *f) {
 #endif
             if (name_rva < min_rva) min_rva = name_rva;
             if (name_rva > max_rva) max_rva = name_rva + strlen(n) + 1;
-            free(n);
+            qfree(n);
          }
       }
       if (is_mapped(base + min_rva) && is_mapped(base + max_rva - 1)) {
       }
       else {
          unsigned int sz = max_rva - min_rva + 2;
-         unsigned char *strtable = (unsigned char *)malloc(sz);
-         if (fseek(f, rvaToFileOffset(min_rva), SEEK_SET)) {
-            free(strtable);
+         unsigned char *strtable = (unsigned char *)qalloc(sz);
+         if (qfseek(f, rvaToFileOffset(min_rva), SEEK_SET)) {
+            qfree(strtable);
 //            destroy();
             return;
          }
-         if (fread(strtable, sz, 1, f) != 1)  {
-            free(strtable);
+         if (qfread(f, strtable, sz) != sz)  {
+            qfree(strtable);
 //            destroy();
             return;
          }
+         ZZZ;
          createSegment(base + min_rva, sz, strtable);
-         free(strtable);
+         qfree(strtable);
       }
       // Make sure there is a segment to hold the import table
       if (!is_mapped(base + min_iat) && !is_mapped(base + max_iat - 1)) {
+         ZZZ;
          createSegment(base + min_iat, max_iat - min_iat, NULL);
       }
    }
@@ -372,7 +376,7 @@ void PETables::loadTables(Buffer &b) {
       valid = 0;
       return;
    }
-   sections = (IMAGE_SECTION_HEADER*)malloc(num_sections * sizeof(IMAGE_SECTION_HEADER));
+   sections = (IMAGE_SECTION_HEADER*)qalloc(num_sections * sizeof(IMAGE_SECTION_HEADER));
    b.read(sections, sizeof(IMAGE_SECTION_HEADER) * num_sections);
    if (b.has_error()) {
       valid = 0;
@@ -386,7 +390,7 @@ void PETables::loadTables(Buffer &b) {
    }
    thunk_rec *p = NULL, *n = NULL;
    for (unsigned int i = 0; i < num_imports; i++) {
-      p = (thunk_rec*)malloc(sizeof(thunk_rec));
+      p = (thunk_rec*)qalloc(sizeof(thunk_rec));
       p->next = n;
       n = p;
       b.readString(&p->dll_name);
@@ -404,14 +408,14 @@ void PETables::loadTables(Buffer &b) {
          valid = 0;
          return;
       }
-      p->iat = (unsigned int*) malloc(p->iat_size * sizeof(unsigned int));
+      p->iat = (unsigned int*) qalloc(p->iat_size * sizeof(unsigned int));
       b.read(p->iat, p->iat_size * sizeof(unsigned int));
       if (b.has_error()) {
          valid = 0;
          return;
       }
 /*
-      p->names = (char**)calloc(p->iat_size, sizeof(char*));
+      p->names = (char**)qcalloc(p->iat_size, sizeof(char*));
       for (int i = 0; p->iat[i]; i++) {
          if (p->iat[i] & 0x80000000) continue;  //import by ordinal
          b.readString(&p->names[i]);
@@ -446,21 +450,21 @@ void PETables::saveTables(Buffer &b) {
 }
 
 void PETables::destroy() {
-   free(sections);
-   free(nt);
+   qfree(sections);
+   qfree(nt);
    thunk_rec *p;
    for (p = imports; p; p = imports) {
       imports = imports->next;
-      free(p->dll_name);
-      free(p->iat);
+      qfree(p->dll_name);
+      qfree(p->iat);
 /*
       for (unsigned int i = 0; i < p->iat_size; i++) {
-         free(p->names[i]);
+         qfree(p->names[i]);
       }
 
-      free(p->names);
+      qfree(p->names);
 */
-      free(p);
+      qfree(p);
    }
    valid = 0;
 }
@@ -473,26 +477,26 @@ unsigned int loadIntoIdb(FILE *dll) {
    _IMAGE_EXPORT_DIRECTORY *expdir = NULL;
    unsigned int len, handle;
    
-   if (fread(&dos, sizeof(_IMAGE_DOS_HEADER), 1, dll) != 1) {
+   if (qfread(dll, &dos, sizeof(_IMAGE_DOS_HEADER)) != sizeof(_IMAGE_DOS_HEADER)) {
       return 0xFFFFFFFF;
    }
-   if (dos.e_magic != 0x5A4D || fseek(dll, dos.e_lfanew, SEEK_SET)) {
+   if (dos.e_magic != 0x5A4D || qfseek(dll, dos.e_lfanew, SEEK_SET)) {
       return 0xFFFFFFFF;
    }
-   if (fread(&nt, sizeof(_IMAGE_NT_HEADERS), 1, dll) != 1) {
+   if (qfread(dll, &nt, sizeof(_IMAGE_NT_HEADERS)) != sizeof(_IMAGE_NT_HEADERS)) {
       return 0xFFFFFFFF;
    }
    if (nt.Signature != 0x4550) {
       return 0xFFFFFFFF;
    }
-   if (fread(&sect, sizeof(_IMAGE_SECTION_HEADER), 1, dll) != 1) {
+   if (qfread(dll, &sect, sizeof(_IMAGE_SECTION_HEADER)) != sizeof(_IMAGE_SECTION_HEADER)) {
       return 0xFFFFFFFF;
    }
    //read all header bytes into buff
    len = sect.PointerToRawData;
-   unsigned char *dat = (unsigned char*)malloc(len);
-   if (dat == NULL || fseek(dll, 0, SEEK_SET) || fread(dat, len, 1, dll) != 1) {
-      free(dat);
+   unsigned char *dat = (unsigned char*)qalloc(len);
+   if (dat == NULL || qfseek(dll, 0, SEEK_SET) || qfread(dll, dat, len) != len) {
+      qfree(dat);
       return 0xFFFFFFFF;
    }
    pdos = (_IMAGE_DOS_HEADER*)dat;
@@ -540,7 +544,7 @@ unsigned int loadIntoIdb(FILE *dll) {
       if (!found && (handle >= 0x80000000 || (0x80000000 - handle) < nt.OptionalHeader.SizeOfImage)) {
          if (triedDefault) {
             //no room to load this library
-            free(dat);
+            qfree(dat);
             return 0xFFFFFFFF;
          }
          else {
@@ -550,6 +554,7 @@ unsigned int loadIntoIdb(FILE *dll) {
       }
    } while (!found);
 
+   ZZZ;
    createSegment(handle, len, dat);
 
    applyPEHeaderTemplates(handle);
@@ -558,14 +563,15 @@ unsigned int loadIntoIdb(FILE *dll) {
    exp_size = nt.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
    if (exp_rva && exp_size) {
       exp_fileoff = rvaToFileOffset(psect, nt.FileHeader.NumberOfSections, exp_rva);
-      expdir = (_IMAGE_EXPORT_DIRECTORY*)malloc(exp_size);
+      expdir = (_IMAGE_EXPORT_DIRECTORY*)qalloc(exp_size);
    }
-   if (expdir == NULL || fseek(dll, exp_fileoff, SEEK_SET) || fread(expdir, exp_size, 1, dll) != 1) {
-      free(dat);
-      free(expdir);
+   if (expdir == NULL || qfseek(dll, exp_fileoff, SEEK_SET) || qfread(dll, expdir, exp_size) != exp_size) {
+      qfree(dat);
+      qfree(expdir);
       return 0xFFFFFFFF;
    }
    
+   ZZZ;
    createSegment(handle + exp_rva, exp_size, (unsigned char*)expdir);
 
    if (expdir->AddressOfFunctions < exp_rva || expdir->AddressOfFunctions >= (exp_rva + exp_size)) {
@@ -581,7 +587,7 @@ unsigned int loadIntoIdb(FILE *dll) {
       msg("EOT lies outside directory bounds\n");
    }
 
-   free(dat);
-   free(expdir);
+   qfree(dat);
+   qfree(expdir);
    return handle;
 }

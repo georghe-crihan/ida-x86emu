@@ -320,7 +320,7 @@ void sehBegin(unsigned int interrupt_number) {
 }
 
 void addVectoredExceptionHandler(bool first, unsigned int handler) {
-   VehNode *n = (VehNode*)malloc(sizeof(VehNode));
+   VehNode *n = (VehNode*)qalloc(sizeof(VehNode));
    n->handler = handler;
    if (first) {
       n->next = vehList;
@@ -349,7 +349,7 @@ void removeVectoredExceptionHandler(unsigned int handler) {
          else {
             vehList = p->next;
          }
-         free(h);
+         qfree(h);
          break;
       }
       p = h;
